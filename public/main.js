@@ -40,10 +40,16 @@ let selectedOtherPlayerIds = [];
 let selectedCardIndex = null;
 
 // --- Event Listeners ---
+const addBotBtn = document.getElementById('add-bot-btn');
+
 joinBtn.addEventListener('click', () => {
     const name = playerNameInput.value.trim();
     if (!name) return;
     socket.emit('join_game', name);
+});
+
+addBotBtn.addEventListener('click', () => {
+    socket.emit('add_bot');
 });
 
 playerNameInput.addEventListener('keypress', (e) => {

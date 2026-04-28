@@ -11,7 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Game State
 let gameState = {
-    players: [], // { id, name, role, san, hand: [] }
+    players: [], // { id, name, role, san, hand: [], isBot: boolean }
     deck: [],
     round: 1,
     phase: 'lobby', // lobby, leader_selection, card_submission, event_action, result, game_over
@@ -42,6 +42,8 @@ const EVENT_CARDS = [
     { id: 'blind_fanaticism', name: '盲目の狂信', desc: '次ターンの儀式参加者は、手札を見ずにランダム提出（システム自動処理）となる。' }
 ];
 
+const ROLES = ['Explorer', 'Explorer', 'Explorer', 'Explorer', 'Cultist'];
+
 function addLog(msg) {
     const log = { id: Date.now(), msg, type: 'system' };
     gameState.logs.push(log);
@@ -50,22 +52,18 @@ function addLog(msg) {
 }
 
 function broadcastState() {
-    // Hide sensitive info like other players' hands and roles
     io.sockets.sockets.forEach((socket) => {
         const playerState = JSON.parse(JSON.stringify(gameState));
-        
-        // Obfuscate roles and hands
         if (playerState.phase !== 'game_over') {
             playerState.players.forEach(p => {
                 if (p.id !== socket.id) {
                     if (p.phase !== 'game_over') p.role = '???';
-                    // Hide hand unless exposed
                     if (!playerState.activeEvents.handRevealed.includes(p.id)) {
                         p.hand = p.hand.map(() => 'hidden');
                     }
                 }
             });
-            playerState.deck = playerState.deck.length; // Just send count
+            playerState.deck = playerState.deck.length;
         }
         socket.emit('game_state', playerState);
     });
@@ -79,10 +77,7 @@ function createDeck() {
 }
 
 function drawCards(count) {
-    if (gameState.deck.length < count) {
-        // Not enough cards, but in this game 30 cards is exactly enough for 5 players x 5 rounds
-        return [];
-    }
+    if (gameState.deck.length < count) return [];
     return gameState.deck.splice(0, count);
 }
 
@@ -105,7 +100,6 @@ function checkGameOver() {
         return true;
     }
     
-    // Check if all explorers are dead (SAN 0)
     const explorers = gameState.players.filter(p => p.role === 'Explorer');
     const allExplorersMad = explorers.every(p => p.san <= 0);
     if (allExplorersMad) {
@@ -116,7 +110,7 @@ function checkGameOver() {
     }
     
     if (gameState.round > 5) {
-        gameState.winner = 'Cultist'; // By default if 5 rounds end without 3 successes
+        gameState.winner = 'Cultist';
         gameState.phase = 'game_over';
         addLog("【ゲーム終了】5回の儀式が終了しました。狂信者陣営の勝利です！");
         return true;
@@ -130,11 +124,9 @@ function nextTurn() {
         return;
     }
 
-    // Reset some events
     gameState.activeEvents.handRevealed = [];
     gameState.activeEvents.chatRestricted = false;
     
-    // Shift leader
     const currentIndex = gameState.players.findIndex(p => p.id === gameState.leaderId);
     let nextIndex = (currentIndex + 1) % gameState.players.length;
     gameState.leaderId = gameState.players[nextIndex].id;
@@ -146,16 +138,14 @@ function nextTurn() {
     
     addLog(`ラウンド ${gameState.round} が開始されました。現在の祭祀長は ${gameState.players[nextIndex].name} です。`);
     
-    // Draw back up to 2 cards if needed (or 1 if event)
     gameState.players.forEach(p => {
         const targetHandSize = gameState.activeEvents.oneCardHand ? 1 : 2;
         while (p.hand.length < targetHandSize && gameState.deck.length > 0) {
             p.hand.push(...drawCards(1));
         }
     });
-    gameState.activeEvents.oneCardHand = false; // reset this event
+    gameState.activeEvents.oneCardHand = false;
 
-    // Apply nextTurnRandom Event
     if (gameState.activeEvents.nextTurnRandom) {
         gameState.activeEvents.blindSubmission = true;
         gameState.activeEvents.nextTurnRandom = false;
@@ -164,6 +154,7 @@ function nextTurn() {
     }
 
     broadcastState();
+    triggerBotActions();
 }
 
 function triggerEvent() {
@@ -175,6 +166,7 @@ function triggerEvent() {
             gameState.phase = 'event_action';
             gameState.pendingEventAction = { type: 'select_players', count: 2, eventId: event.id };
             addLog("祭祀長は手札を公開する2名を選んでください。");
+            triggerBotActions();
             break;
         case 'depleted_offerings':
             gameState.players.forEach(p => {
@@ -191,6 +183,7 @@ function triggerEvent() {
             gameState.phase = 'event_action';
             gameState.pendingEventAction = { type: 'select_players', count: 1, eventId: event.id };
             addLog("祭祀長は生贄となる1名を選んでください。");
+            triggerBotActions();
             break;
         case 'invitation_to_madness':
             let maxSan = -1;
@@ -218,7 +211,6 @@ function processResults() {
     const hasFail = gameState.submittedCards.some(s => s.card === 'fail');
     
     let resultMsg = "提出されたカード: ";
-    // Shuffle submitted cards before revealing to hide who played what
     const shuffledCards = gameState.submittedCards.map(s => s.card).sort(() => Math.random() - 0.5);
     resultMsg += shuffledCards.map(c => c === 'success' ? '成功' : '失敗').join(', ');
     addLog(resultMsg);
@@ -226,7 +218,7 @@ function processResults() {
     if (!hasFail) {
         gameState.successCount++;
         addLog(`【儀式成功】祭壇の封印に成功しました！（成功: ${gameState.successCount}回）`);
-        triggerEvent(); // Might transition to event_action or just endRound
+        triggerEvent();
     } else {
         gameState.failCount++;
         addLog(`【儀式失敗】失敗カードが含まれていました。（失敗: ${gameState.failCount}回）`);
@@ -237,6 +229,135 @@ function processResults() {
 function endRound() {
     gameState.round++;
     nextTurn();
+}
+
+// Bot Logic
+function triggerBotActions() {
+    setTimeout(() => {
+        if (gameState.phase === 'leader_selection') {
+            const leader = gameState.players.find(p => p.id === gameState.leaderId);
+            if (leader && leader.isBot) {
+                const reqCount = getRequiredParticipants();
+                let pool = gameState.players.map(p => p.id).sort(() => Math.random() - 0.5);
+                handleSelectParticipants(leader.id, pool.slice(0, reqCount));
+            }
+        }
+        else if (gameState.phase === 'card_submission') {
+            gameState.players.forEach(p => {
+                if (p.isBot && gameState.participants.includes(p.id)) {
+                    const hasSubmitted = gameState.submittedCards.find(s => s.playerId === p.id);
+                    if (!hasSubmitted && p.san > 0 && !gameState.activeEvents.blindSubmission) {
+                        const cardIdx = Math.floor(Math.random() * p.hand.length);
+                        handleSubmitCard(p.id, cardIdx);
+                    }
+                }
+            });
+        }
+        else if (gameState.phase === 'event_action') {
+            const leader = gameState.players.find(p => p.id === gameState.leaderId);
+            if (leader && leader.isBot && gameState.pendingEventAction) {
+                const count = gameState.pendingEventAction.count;
+                let pool = gameState.players.map(p => p.id).sort(() => Math.random() - 0.5);
+                handleEventAction(leader.id, pool.slice(0, count));
+            }
+        }
+    }, 2000);
+}
+
+function checkGameStart() {
+    if (gameState.players.length === MAX_PLAYERS) {
+        const roles = [...ROLES].sort(() => Math.random() - 0.5);
+        gameState.deck = createDeck();
+        
+        gameState.players.forEach((p, i) => {
+            p.role = roles[i];
+            p.hand = drawCards(2);
+        });
+
+        gameState.leaderId = gameState.players[Math.floor(Math.random() * MAX_PLAYERS)].id;
+        gameState.phase = 'leader_selection';
+        
+        addLog("5人集まりました。ゲームを開始します！");
+        addLog(`最初の祭祀長は ${gameState.players.find(p=>p.id===gameState.leaderId).name} です。`);
+        
+        broadcastState();
+        triggerBotActions();
+    }
+}
+
+// Extracted Action Handlers
+function handleSelectParticipants(playerId, selectedIds) {
+    if (gameState.phase !== 'leader_selection' || playerId !== gameState.leaderId) return;
+    const reqCount = getRequiredParticipants();
+    if (selectedIds.length !== reqCount) return;
+
+    gameState.participants = selectedIds;
+    gameState.phase = 'card_submission';
+    
+    const participantNames = gameState.players.filter(p => selectedIds.includes(p.id)).map(p => p.name).join(', ');
+    addLog(`祭祀長が儀式参加者を選出しました: ${participantNames}`);
+    
+    gameState.players.forEach(p => {
+        if (gameState.participants.includes(p.id)) {
+            if (p.san <= 0 || gameState.activeEvents.blindSubmission) {
+                const cardIdx = Math.floor(Math.random() * p.hand.length);
+                const card = p.hand.splice(cardIdx, 1)[0];
+                gameState.submittedCards.push({ playerId: p.id, card });
+                addLog(`${p.name} のカードが自動提出されました。`);
+            }
+        }
+    });
+    
+    if (gameState.submittedCards.length === reqCount) {
+        gameState.phase = 'result';
+        processResults();
+    }
+
+    broadcastState();
+    triggerBotActions();
+}
+
+function handleSubmitCard(playerId, cardIndex) {
+    const player = gameState.players.find(p => p.id === playerId);
+    if (gameState.phase !== 'card_submission') return;
+    if (!gameState.participants.includes(playerId)) return;
+    if (gameState.submittedCards.find(s => s.playerId === playerId)) return;
+    if (player.san <= 0 || gameState.activeEvents.blindSubmission) return;
+
+    if (cardIndex < 0 || cardIndex >= player.hand.length) return;
+
+    const card = player.hand.splice(cardIndex, 1)[0];
+    gameState.submittedCards.push({ playerId, card });
+
+    if (gameState.submittedCards.length === gameState.participants.length) {
+        gameState.phase = 'result';
+        processResults();
+    } else {
+        addLog(`${player.name} がカードを提出しました。`);
+    }
+
+    broadcastState();
+    triggerBotActions();
+}
+
+function handleEventAction(playerId, selectedIds) {
+    if (gameState.phase !== 'event_action' || playerId !== gameState.leaderId) return;
+    if (!gameState.pendingEventAction) return;
+    
+    const action = gameState.pendingEventAction;
+    if (selectedIds.length !== action.count) return;
+
+    if (action.eventId === 'deep_exposure') {
+        gameState.activeEvents.handRevealed = selectedIds;
+        const names = gameState.players.filter(p => selectedIds.includes(p.id)).map(p => p.name).join(', ');
+        addLog(`${names} の手札が公開されました。`);
+    } else if (action.eventId === 'bloody_price') {
+        const target = gameState.players.find(p => p.id === selectedIds[0]);
+        target.san = Math.max(0, target.san - 2);
+        addLog(`${target.name} が生贄に選ばれ、SAN値が2減少しました。`);
+    }
+
+    endRound();
 }
 
 
@@ -264,28 +385,39 @@ io.on('connection', (socket) => {
             name: playerName || `Player ${gameState.players.length + 1}`,
             role: null,
             san: 3,
-            hand: []
+            hand: [],
+            isBot: false
         });
 
-        addLog(`${playerName} が参加しました。(${gameState.players.length}/${MAX_PLAYERS})`);
+        addLog(`${playerName || `Player ${gameState.players.length}`} が参加しました。(${gameState.players.length}/${MAX_PLAYERS})`);
 
-        if (gameState.players.length === MAX_PLAYERS) {
-            // Start Game
-            const roles = [...ROLES].sort(() => Math.random() - 0.5);
-            gameState.deck = createDeck();
-            
-            gameState.players.forEach((p, i) => {
-                p.role = roles[i];
-                p.hand = drawCards(2);
-            });
+        checkGameStart();
+        broadcastState();
+    });
 
-            gameState.leaderId = gameState.players[Math.floor(Math.random() * MAX_PLAYERS)].id;
-            gameState.phase = 'leader_selection';
-            
-            addLog("5人集まりました。ゲームを開始します！");
-            addLog(`最初の祭祀長は ${gameState.players.find(p=>p.id===gameState.leaderId).name} です。`);
+    socket.on('add_bot', () => {
+        if (gameState.phase !== 'lobby') return;
+        if (gameState.players.length >= MAX_PLAYERS) return;
+
+        let botIndex = 1;
+        let botName = `CPU ${botIndex}`;
+        while (gameState.players.find(p => p.name === botName)) {
+            botIndex++;
+            botName = `CPU ${botIndex}`;
         }
 
+        gameState.players.push({
+            id: `bot_${Date.now()}_${Math.random()}`,
+            name: botName,
+            role: null,
+            san: 3,
+            hand: [],
+            isBot: true
+        });
+
+        addLog(`${botName} が参加しました。(${gameState.players.length}/${MAX_PLAYERS})`);
+
+        checkGameStart();
         broadcastState();
     });
 
@@ -296,9 +428,8 @@ io.on('connection', (socket) => {
 
         let finalMsg = msg;
         
-        // Apply Restrictions
         if (player.san <= 0) {
-            finalMsg = "あ…あ…あ…"; // Mad text
+            finalMsg = "あ…あ…あ…";
         } else if (gameState.activeEvents.chatRestricted) {
             if (msg.includes('成功') || msg.includes('失敗')) {
                 player.san = Math.max(0, player.san - 1);
@@ -313,46 +444,17 @@ io.on('connection', (socket) => {
         io.emit('new_log', chatLog);
         
         if (player.san <= 0 || gameState.activeEvents.chatRestricted) {
-            broadcastState(); // Update SAN if changed
+            broadcastState();
         }
     });
 
-    // Leader selects participants
     socket.on('select_participants', (selectedIds) => {
-        if (gameState.phase !== 'leader_selection' || socket.id !== gameState.leaderId) return;
-        
         const reqCount = getRequiredParticipants();
         if (selectedIds.length !== reqCount) {
              socket.emit('error_msg', `${reqCount}名選んでください。`);
              return;
         }
-
-        gameState.participants = selectedIds;
-        gameState.phase = 'card_submission';
-        
-        const participantNames = gameState.players.filter(p => selectedIds.includes(p.id)).map(p => p.name).join(', ');
-        addLog(`祭祀長が儀式参加者を選出しました: ${participantNames}`);
-        
-        // Auto submit for players with SAN 0 or Blind Fanaticism
-        gameState.players.forEach(p => {
-            if (gameState.participants.includes(p.id)) {
-                if (p.san <= 0 || gameState.activeEvents.blindSubmission) {
-                    // Random submit
-                    const cardIdx = Math.floor(Math.random() * p.hand.length);
-                    const card = p.hand.splice(cardIdx, 1)[0];
-                    gameState.submittedCards.push({ playerId: p.id, card });
-                    addLog(`${p.name} のカードが自動提出されました。`);
-                }
-            }
-        });
-        
-        // Check if all auto-submitted
-        if (gameState.submittedCards.length === reqCount) {
-            gameState.phase = 'result';
-            processResults();
-        }
-
-        broadcastState();
+        handleSelectParticipants(socket.id, selectedIds);
     });
 
     socket.on('reroll_san', () => {
@@ -365,71 +467,36 @@ io.on('connection', (socket) => {
              return;
         }
 
-        // Reroll logic
         player.san -= 1;
-        // Return hand to deck
         gameState.deck.push(...player.hand);
         player.hand = [];
-        // Shuffle deck
         gameState.deck.sort(() => Math.random() - 0.5);
-        // Draw 2 new
         player.hand = drawCards(2);
 
         addLog(`${player.name} がSAN値を消費して手札を引き直しました。`);
         broadcastState();
     });
 
-    // Player submits card
     socket.on('submit_card', (cardIndex) => {
-        const player = gameState.players.find(p => p.id === socket.id);
-        if (gameState.phase !== 'card_submission') return;
-        if (!gameState.participants.includes(socket.id)) return;
-        if (gameState.submittedCards.find(s => s.playerId === socket.id)) return;
-        if (player.san <= 0 || gameState.activeEvents.blindSubmission) return; // Should be auto
-
-        if (cardIndex < 0 || cardIndex >= player.hand.length) return;
-
-        const card = player.hand.splice(cardIndex, 1)[0];
-        gameState.submittedCards.push({ playerId: socket.id, card });
-
-        if (gameState.submittedCards.length === gameState.participants.length) {
-            gameState.phase = 'result';
-            processResults();
-        } else {
-            addLog(`${player.name} がカードを提出しました。`);
-        }
-
-        broadcastState();
+        handleSubmitCard(socket.id, cardIndex);
     });
 
-    // Leader event action
     socket.on('event_action', (selectedIds) => {
-        if (gameState.phase !== 'event_action' || socket.id !== gameState.leaderId) return;
-        if (!gameState.pendingEventAction) return;
-        
-        const action = gameState.pendingEventAction;
-        if (selectedIds.length !== action.count) return;
-
-        if (action.eventId === 'deep_exposure') {
-            gameState.activeEvents.handRevealed = selectedIds;
-            const names = gameState.players.filter(p => selectedIds.includes(p.id)).map(p => p.name).join(', ');
-            addLog(`${names} の手札が公開されました。`);
-        } else if (action.eventId === 'bloody_price') {
-            const target = gameState.players.find(p => p.id === selectedIds[0]);
-            target.san = Math.max(0, target.san - 2);
-            addLog(`${target.name} が生贄に選ばれ、SAN値が2減少しました。`);
-        }
-
-        endRound();
+        handleEventAction(socket.id, selectedIds);
     });
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        // Simple handling for now: just remove them or mark inactive
-        // In a real game, you'd want robust reconnection logic
-        const player = gameState.players.find(p => p.id === socket.id);
-        if (player) {
-            addLog(`${player.name} が切断しました。`);
+        const playerIdx = gameState.players.findIndex(p => p.id === socket.id);
+        if (playerIdx > -1) {
+            const player = gameState.players[playerIdx];
+            if (gameState.phase === 'lobby') {
+                gameState.players.splice(playerIdx, 1);
+                addLog(`${player.name} が退出しました。`);
+                broadcastState();
+            } else {
+                addLog(`${player.name} が切断しました。`);
+            }
         }
     });
 });
