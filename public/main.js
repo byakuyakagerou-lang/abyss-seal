@@ -96,7 +96,10 @@ submitCardBtn.addEventListener('click', () => {
 });
 
 rerollSanBtn.addEventListener('click', () => {
-    socket.emit('reroll_san');
+    if (selectedCardIndex !== null) {
+        socket.emit('reroll_san', selectedCardIndex);
+        selectedCardIndex = null;
+    }
 });
 
 eventActionBtn.addEventListener('click', () => {
@@ -406,12 +409,22 @@ function updateActions(state) {
             } else if (me.san <= 0 || state.activeEvents.blindSubmission) {
                 promptText = "自動的にカードが抽出されます...";
             } else {
-                promptText = "提出する供物カードを選択してください。";
-                submitCardBtn.classList.remove('hidden');
-                submitCardBtn.disabled = selectedCardIndex === null;
+                promptText = "提出または引き直すカードを選択してください。";
                 
-                if (me.san > 0) {
-                    rerollSanBtn.classList.remove('hidden');
+                if (selectedCardIndex !== null) {
+                    submitCardBtn.classList.remove('hidden');
+                    submitCardBtn.disabled = false;
+                    if (me.san > 0) {
+                        rerollSanBtn.classList.remove('hidden');
+                        rerollSanBtn.disabled = false;
+                    }
+                } else {
+                    submitCardBtn.classList.remove('hidden');
+                    submitCardBtn.disabled = true;
+                    if (me.san > 0) {
+                        rerollSanBtn.classList.remove('hidden');
+                        rerollSanBtn.disabled = true;
+                    }
                 }
             }
         } else {
@@ -441,6 +454,21 @@ function showGameOver(state) {
     else desc = "探索者は全員狂気に飲まれました。";
     
     overlayDesc.textContent = desc;
+
+    const resultList = document.getElementById('result-players-list');
+    resultList.innerHTML = '';
+    state.players.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'player-card';
+        if (p.san <= 0) item.classList.add('is-dead');
+        
+        let html = `<div class="player-name">${p.name}</div>`;
+        html += `<div class="player-role-unknown">役職: ${p.role === 'Explorer' ? '探索者' : '狂信者'}</div>`;
+        html += `<div class="player-san">SAN: ${p.san}</div>`;
+        
+        item.innerHTML = html;
+        resultList.appendChild(item);
+    });
 }
 
 function getRequiredParticipants(state) {

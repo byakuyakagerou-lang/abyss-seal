@@ -503,7 +503,7 @@ io.on('connection', (socket) => {
         handleSelectParticipants(socket.id, selectedIds);
     });
 
-    socket.on('reroll_san', () => {
+    socket.on('reroll_san', (cardIndex) => {
         const player = gameState.players.find(p => p.id === socket.id);
         if (gameState.phase !== 'card_submission') return;
         if (!gameState.participants.includes(socket.id)) return;
@@ -512,14 +512,15 @@ io.on('connection', (socket) => {
              socket.emit('error_msg', 'SAN値が足りません。');
              return;
         }
+        if (typeof cardIndex !== 'number' || cardIndex < 0 || cardIndex >= player.hand.length) return;
 
         player.san -= 1;
-        gameState.deck.push(...player.hand);
-        player.hand = [];
+        const oldCard = player.hand.splice(cardIndex, 1)[0];
+        gameState.deck.push(oldCard);
         gameState.deck.sort(() => Math.random() - 0.5);
-        player.hand = drawCards(2);
+        player.hand.push(...drawCards(1));
 
-        addLog(`${player.name} がSAN値を消費して手札を引き直しました。`);
+        addLog(`${player.name} がSAN値を消費して手札を1枚引き直しました。`);
         broadcastState();
     });
 
