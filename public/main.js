@@ -51,6 +51,7 @@ let currentGameState = null;
 let selectedOtherPlayerIds = [];
 let selectedCardIndex = null;
 let logsRestored = false;
+let isAnimatingResult = false;
 
 // --- Event Listeners ---
 createRoomBtn.addEventListener('click', () => {
@@ -223,6 +224,14 @@ socket.on('game_state', (state) => {
             showGameOver(state);
         } else {
             overlay.classList.add('hidden');
+        }
+
+        if (state.phase === 'result') {
+            if (!isAnimatingResult) {
+                showRitualAnimation(state);
+            }
+        } else {
+            hideRitualAnimation();
         }
 
         // Restore logs if reconnected
@@ -538,6 +547,36 @@ function updateActions(state) {
     }
     
     actionPrompt.textContent = promptText;
+}
+
+function showRitualAnimation(state) {
+    isAnimatingResult = true;
+    const container = document.getElementById('ritual-animation-container');
+    const cardsContainer = document.getElementById('ritual-animation-cards');
+    
+    container.classList.remove('hidden');
+    cardsContainer.innerHTML = '';
+    
+    // Create face-down cards
+    state.shuffledResultCards.forEach((cardVal, index) => {
+        const cardEl = document.createElement('div');
+        cardEl.className = 'card hidden-card';
+        cardsContainer.appendChild(cardEl);
+        
+        // Flip animation one by one
+        setTimeout(() => {
+            cardEl.className = `card ${cardVal} flip-animation`;
+            cardEl.textContent = cardVal === 'success' ? '成功' : '失敗';
+        }, (index + 1) * 1000);
+    });
+}
+
+function hideRitualAnimation() {
+    isAnimatingResult = false;
+    const container = document.getElementById('ritual-animation-container');
+    if (container) {
+        container.classList.add('hidden');
+    }
 }
 
 function showGameOver(state) {

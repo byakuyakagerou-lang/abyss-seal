@@ -47,7 +47,8 @@ function createInitialGameState(roomId, roomName) {
             blindSubmission: false,
             oneCardHand: false
         },
-        pendingEventAction: null
+        pendingEventAction: null,
+        shuffledResultCards: []
     };
 }
 
@@ -69,6 +70,7 @@ function resetGame(gameState) {
         oneCardHand: false
     };
     gameState.pendingEventAction = null;
+    gameState.shuffledResultCards = [];
 
     gameState.players.forEach(p => {
         p.role = null;
@@ -251,11 +253,10 @@ function triggerEvent(gameState) {
 }
 
 function processResults(gameState) {
-    const hasFail = gameState.submittedCards.some(s => s.card === 'fail');
+    const hasFail = gameState.shuffledResultCards.some(c => c === 'fail');
     
     let resultMsg = "提出されたカード: ";
-    const shuffledCards = gameState.submittedCards.map(s => s.card).sort(() => Math.random() - 0.5);
-    resultMsg += shuffledCards.map(c => c === 'success' ? '成功' : '失敗').join(', ');
+    resultMsg += gameState.shuffledResultCards.map(c => c === 'success' ? '成功' : '失敗').join(', ');
     addLog(gameState, resultMsg);
 
     if (!hasFail) {
@@ -378,13 +379,26 @@ function handleSelectParticipants(gameState, playerId, selectedIds) {
         }
     });
     
-    if (gameState.submittedCards.length === reqCount) {
-        gameState.phase = 'result';
-        processResults(gameState);
-    }
-
+    checkCardSubmissionComplete(gameState);
     broadcastState(gameState.id);
     triggerBotActions(gameState);
+}
+
+function checkCardSubmissionComplete(gameState) {
+    if (gameState.phase !== 'card_submission') return;
+    if (gameState.submittedCards.length === gameState.participants.length) {
+        gameState.phase = 'result';
+        gameState.shuffledResultCards = gameState.submittedCards.map(s => s.card).sort(() => Math.random() - 0.5);
+        addLog(gameState, "全員の提出が完了しました。儀式の結果を確認します...");
+        
+        // Wait for animation
+        const delay = gameState.shuffledResultCards.length * 1000 + 2000;
+        setTimeout(() => {
+            if (rooms.has(gameState.id) && gameState.phase === 'result') {
+                processResults(gameState);
+            }
+        }, delay);
+    }
 }
 
 function handleSubmitCard(gameState, playerId, cardIndex) {
@@ -399,12 +413,9 @@ function handleSubmitCard(gameState, playerId, cardIndex) {
     const card = player.hand.splice(cardIndex, 1)[0];
     gameState.submittedCards.push({ playerId, card });
 
-    if (gameState.submittedCards.length === gameState.participants.length) {
-        gameState.phase = 'result';
-        processResults(gameState);
-    } else {
-        addLog(gameState, `${player.name} がカードを提出しました。`);
-    }
+    addLog(gameState, `${player.name} がカードを提出しました。`);
+    
+    checkCardSubmissionComplete(gameState);
 
     broadcastState(gameState.id);
     triggerBotActions(gameState);
@@ -653,12 +664,9 @@ io.on('connection', (socket) => {
             const card = player.hand.splice(finalCardIdx, 1)[0];
             gameState.submittedCards.push({ playerId: player.id, card });
             addLog(gameState, `${player.name} は発狂し、カードが自動提出されました。`);
-
-            if (gameState.submittedCards.length === gameState.participants.length) {
-                gameState.phase = 'result';
-                processResults(gameState);
-            }
         }
+        
+        checkCardSubmissionComplete(gameState);
         broadcastState(gameState.id);
     });
 
