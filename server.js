@@ -11,7 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Game State
 let gameState = {
-    players: [], // { id, name, role, san, hand: [], isBot: boolean, isReady: boolean }
+    players: [], // { id, name, role, san, hand: [], isBot: boolean, isReady: boolean, isConnected: boolean }
     deck: [],
     round: 1,
     phase: 'lobby', // lobby, leader_selection, card_submission, event_action, result, game_over
@@ -276,7 +276,16 @@ function triggerBotActions() {
                 if (p.isBot && gameState.participants.includes(p.id)) {
                     const hasSubmitted = gameState.submittedCards.find(s => s.playerId === p.id);
                     if (!hasSubmitted && p.san > 0 && !gameState.activeEvents.blindSubmission) {
-                        const cardIdx = Math.floor(Math.random() * p.hand.length);
+                        let cardIdx = Math.floor(Math.random() * p.hand.length);
+                        
+                        if (p.role === 'Explorer') {
+                            const successIdx = p.hand.indexOf('success');
+                            if (successIdx > -1) cardIdx = successIdx;
+                        } else if (p.role === 'Cultist') {
+                            const failIdx = p.hand.indexOf('fail');
+                            if (failIdx > -1) cardIdx = failIdx;
+                        }
+                        
                         handleSubmitCard(p.id, cardIdx);
                     }
                 }
@@ -404,15 +413,26 @@ io.on('connection', (socket) => {
             socket.emit('error_msg', 'ゲームは既に開始されています。');
             return;
         }
-        if (gameState.players.length >= MAX_PLAYERS) {
-            socket.emit('error_msg', '満員です。');
-            return;
-        }
 
         const existingPlayer = gameState.players.find(p => p.name === playerName);
         if (existingPlayer) {
-             socket.emit('error_msg', 'その名前は既に使用されています。');
-             return;
+            if (!existingPlayer.isConnected) {
+                // Reclaim session
+                existingPlayer.id = socket.id;
+                existingPlayer.isConnected = true;
+                addLog(`${playerName} が復帰しました。`);
+                checkGameStart();
+                broadcastState();
+                return;
+            } else {
+                 socket.emit('error_msg', 'その名前は既に使用されています。');
+                 return;
+            }
+        }
+
+        if (gameState.players.length >= MAX_PLAYERS) {
+            socket.emit('error_msg', '満員です。');
+            return;
         }
 
         gameState.players.push({
@@ -422,7 +442,8 @@ io.on('connection', (socket) => {
             san: 3,
             hand: [],
             isBot: false,
-            isReady: false
+            isReady: false,
+            isConnected: true
         });
 
         addLog(`${playerName || `Player ${gameState.players.length}`} がルームに入室しました。(${gameState.players.length}/${MAX_PLAYERS})`);
@@ -458,7 +479,8 @@ io.on('connection', (socket) => {
             san: 3,
             hand: [],
             isBot: true,
-            isReady: true // Bots are always ready
+            isReady: true,
+            isConnected: true
         });
 
         addLog(`${botName} がルームに参加しました。(${gameState.players.length}/${MAX_PLAYERS})`);
@@ -521,6 +543,18 @@ io.on('connection', (socket) => {
         player.hand.push(...drawCards(1));
 
         addLog(`${player.name} がSAN値を消費して手札を1枚引き直しました。`);
+
+        if (player.san <= 0) {
+            const finalCardIdx = Math.floor(Math.random() * player.hand.length);
+            const card = player.hand.splice(finalCardIdx, 1)[0];
+            gameState.submittedCards.push({ playerId: player.id, card });
+            addLog(`${player.name} は発狂し、カードが自動提出されました。`);
+
+            if (gameState.submittedCards.length === gameState.participants.length) {
+                gameState.phase = 'result';
+                processResults();
+            }
+        }
         broadcastState();
     });
 
@@ -535,6 +569,7 @@ io.on('connection', (socket) => {
     socket.on('return_to_room', () => {
         if (gameState.phase === 'game_over') {
             resetGame();
+            gameState.players = gameState.players.filter(p => p.isBot || p.isConnected);
             broadcastState();
         }
     });
@@ -544,13 +579,15 @@ io.on('connection', (socket) => {
         const playerIdx = gameState.players.findIndex(p => p.id === socket.id);
         if (playerIdx > -1) {
             const player = gameState.players[playerIdx];
+            player.isConnected = false;
+
             if (gameState.phase === 'lobby') {
                 gameState.players.splice(playerIdx, 1);
                 addLog(`${player.name} が退出しました。`);
-                broadcastState();
             } else {
                 addLog(`${player.name} が切断しました。`);
             }
+            broadcastState();
         }
     });
 });
