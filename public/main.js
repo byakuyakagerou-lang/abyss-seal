@@ -52,6 +52,8 @@ let selectedOtherPlayerIds = [];
 let selectedCardIndex = null;
 let logsRestored = false;
 let isAnimatingResult = false;
+let previousHand = [];
+let justRerolledIdx = null;
 
 // --- Event Listeners ---
 createRoomBtn.addEventListener('click', () => {
@@ -122,6 +124,7 @@ submitCardBtn.addEventListener('click', () => {
 
 rerollSanBtn.addEventListener('click', () => {
     if (selectedCardIndex !== null) {
+        justRerolledIdx = selectedCardIndex;
         socket.emit('reroll_san', selectedCardIndex);
         selectedCardIndex = null;
     }
@@ -340,26 +343,53 @@ function updateMyStatus(state) {
     myRoleEl.className = 'role-box ' + (me.role ? me.role.toLowerCase() : '');
     mySanEl.textContent = me.san;
 
-    // Render Hand
-    myHandContainer.innerHTML = '';
-    me.hand.forEach((cardVal, idx) => {
-        const card = document.createElement('div');
-        card.className = `card ${cardVal}`;
-        card.textContent = cardVal === 'success' ? '成功' : (cardVal === 'fail' ? '失敗' : '?');
-        
-        // Interaction logic
+    // Check if hand actually changed
+    let handChanged = false;
+    if (me.hand.length !== previousHand.length) {
+        handChanged = true;
+    } else {
+        for (let i = 0; i < me.hand.length; i++) {
+            if (me.hand[i] !== previousHand[i]) handChanged = true;
+        }
+    }
+    if (justRerolledIdx !== null) handChanged = true;
+
+    if (handChanged || myHandContainer.children.length === 0) {
+        myHandContainer.innerHTML = '';
+        me.hand.forEach((cardVal, idx) => {
+            const card = document.createElement('div');
+            
+            let isNew = false;
+            if (me.hand.length > previousHand.length) isNew = true;
+            else if (me.hand.length === previousHand.length && previousHand[idx] !== cardVal) isNew = true;
+            else if (justRerolledIdx === idx) isNew = true;
+
+            card.className = `card ${cardVal}` + (isNew ? ' draw-animation' : '');
+            card.textContent = cardVal === 'success' ? '成功' : (cardVal === 'fail' ? '失敗' : '?');
+            card.dataset.baseClass = card.className;
+            
+            myHandContainer.appendChild(card);
+        });
+        previousHand = me.hand.slice();
+    }
+    justRerolledIdx = null;
+
+    // Interaction logic
+    Array.from(myHandContainer.children).forEach((card, idx) => {
+        card.className = card.dataset.baseClass; // Reset to base classes
+
         if (state.phase === 'card_submission' && state.participants.includes(myId) && !state.submittedCards.find(s=>s.playerId === myId) && me.san > 0 && !state.activeEvents.blindSubmission) {
             card.classList.add('playable');
             if (idx === selectedCardIndex) card.classList.add('selected');
             
-            card.addEventListener('click', () => {
+            card.onclick = () => {
                 selectedCardIndex = idx;
-                updateMyStatus(state); // Re-render to show selection
-                updateActions(state); // Re-render buttons
-            });
+                updateMyStatus(state);
+                updateActions(state);
+            };
+        } else {
+            card.onclick = null;
         }
-        
-        myHandContainer.appendChild(card);
     });
 }
 
@@ -567,7 +597,7 @@ function showRitualAnimation(state) {
         setTimeout(() => {
             cardEl.className = `card ${cardVal} flip-animation`;
             cardEl.textContent = cardVal === 'success' ? '成功' : '失敗';
-        }, (index + 1) * 1000);
+        }, (index + 1) * 1500);
     });
 }
 

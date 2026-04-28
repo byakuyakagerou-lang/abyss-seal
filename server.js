@@ -388,11 +388,18 @@ function checkCardSubmissionComplete(gameState) {
     if (gameState.phase !== 'card_submission') return;
     if (gameState.submittedCards.length === gameState.participants.length) {
         gameState.phase = 'result';
-        gameState.shuffledResultCards = gameState.submittedCards.map(s => s.card).sort(() => Math.random() - 0.5);
+        let resultCards = gameState.submittedCards.map(s => s.card);
+        // 成功を優先的に並べる (successが先、failが後)
+        resultCards.sort((a, b) => {
+            if (a === 'success' && b === 'fail') return -1;
+            if (a === 'fail' && b === 'success') return 1;
+            return 0;
+        });
+        gameState.shuffledResultCards = resultCards;
         addLog(gameState, "全員の提出が完了しました。儀式の結果を確認します...");
         
-        // Wait for animation
-        const delay = gameState.shuffledResultCards.length * 1000 + 2000;
+        // Wait for animation (1.5s per card + 3s pause)
+        const delay = gameState.shuffledResultCards.length * 1500 + 3000;
         setTimeout(() => {
             if (rooms.has(gameState.id) && gameState.phase === 'result') {
                 processResults(gameState);
