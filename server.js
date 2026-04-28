@@ -11,7 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Game State
 let gameState = {
-    players: [], // { id, name, role, san, hand: [], isBot: boolean }
+    players: [], // { id, name, role, san, hand: [], isBot: boolean, isReady: boolean }
     deck: [],
     round: 1,
     phase: 'lobby', // lobby, leader_selection, card_submission, event_action, result, game_over
@@ -31,6 +31,34 @@ let gameState = {
     },
     pendingEventAction: null // For events that require leader action
 };
+
+function resetGame() {
+    gameState.deck = [];
+    gameState.round = 1;
+    gameState.phase = 'lobby';
+    gameState.leaderId = null;
+    gameState.participants = [];
+    gameState.submittedCards = [];
+    gameState.successCount = 0;
+    gameState.failCount = 0;
+    gameState.winner = null;
+    // Keep logs
+    gameState.activeEvents = {
+        chatRestricted: false,
+        handRevealed: [],
+        nextTurnRandom: false,
+        blindSubmission: false,
+        oneCardHand: false
+    };
+    gameState.pendingEventAction = null;
+
+    gameState.players.forEach(p => {
+        p.role = null;
+        p.san = 3;
+        p.hand = [];
+        if (!p.isBot) p.isReady = false;
+    });
+}
 
 const MAX_PLAYERS = 5;
 const EVENT_CARDS = [
@@ -265,7 +293,8 @@ function triggerBotActions() {
 }
 
 function checkGameStart() {
-    if (gameState.players.length === MAX_PLAYERS) {
+    if (gameState.phase !== 'lobby') return;
+    if (gameState.players.length === MAX_PLAYERS && gameState.players.every(p => p.isReady)) {
         const roles = [...ROLES].sort(() => Math.random() - 0.5);
         gameState.deck = createDeck();
         
@@ -277,7 +306,7 @@ function checkGameStart() {
         gameState.leaderId = gameState.players[Math.floor(Math.random() * MAX_PLAYERS)].id;
         gameState.phase = 'leader_selection';
         
-        addLog("5人集まりました。ゲームを開始します！");
+        addLog("5人集まり全員の準備が完了しました。ゲームを開始します！");
         addLog(`最初の祭祀長は ${gameState.players.find(p=>p.id===gameState.leaderId).name} です。`);
         
         broadcastState();
@@ -386,13 +415,23 @@ io.on('connection', (socket) => {
             role: null,
             san: 3,
             hand: [],
-            isBot: false
+            isBot: false,
+            isReady: false
         });
 
-        addLog(`${playerName || `Player ${gameState.players.length}`} が参加しました。(${gameState.players.length}/${MAX_PLAYERS})`);
+        addLog(`${playerName || `Player ${gameState.players.length}`} がルームに入室しました。(${gameState.players.length}/${MAX_PLAYERS})`);
 
         checkGameStart();
         broadcastState();
+    });
+
+    socket.on('toggle_ready', () => {
+        const player = gameState.players.find(p => p.id === socket.id);
+        if (player && gameState.phase === 'lobby') {
+            player.isReady = !player.isReady;
+            broadcastState();
+            checkGameStart();
+        }
     });
 
     socket.on('add_bot', () => {
@@ -412,10 +451,11 @@ io.on('connection', (socket) => {
             role: null,
             san: 3,
             hand: [],
-            isBot: true
+            isBot: true,
+            isReady: true // Bots are always ready
         });
 
-        addLog(`${botName} が参加しました。(${gameState.players.length}/${MAX_PLAYERS})`);
+        addLog(`${botName} がルームに参加しました。(${gameState.players.length}/${MAX_PLAYERS})`);
 
         checkGameStart();
         broadcastState();
@@ -483,6 +523,13 @@ io.on('connection', (socket) => {
 
     socket.on('event_action', (selectedIds) => {
         handleEventAction(socket.id, selectedIds);
+    });
+
+    socket.on('return_to_room', () => {
+        if (gameState.phase === 'game_over') {
+            resetGame();
+            broadcastState();
+        }
     });
 
     socket.on('disconnect', () => {

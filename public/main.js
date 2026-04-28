@@ -2,10 +2,16 @@ const socket = io();
 
 // DOM Elements
 const loginScreen = document.getElementById('login-screen');
+const roomScreen = document.getElementById('room-screen');
 const gameScreen = document.getElementById('game-screen');
 const playerNameInput = document.getElementById('player-name-input');
 const joinBtn = document.getElementById('join-btn');
 const loginError = document.getElementById('login-error');
+
+const roomPlayersList = document.getElementById('room-players-list');
+const toggleReadyBtn = document.getElementById('toggle-ready-btn');
+const roomAddBotBtn = document.getElementById('room-add-bot-btn');
+const returnToRoomBtn = document.getElementById('return-to-room-btn');
 
 const otherPlayersContainer = document.getElementById('other-players-container');
 const myNameEl = document.getElementById('my-name');
@@ -40,20 +46,26 @@ let selectedOtherPlayerIds = [];
 let selectedCardIndex = null;
 
 // --- Event Listeners ---
-const addBotBtn = document.getElementById('add-bot-btn');
-
 joinBtn.addEventListener('click', () => {
     const name = playerNameInput.value.trim();
     if (!name) return;
     socket.emit('join_game', name);
 });
 
-addBotBtn.addEventListener('click', () => {
+playerNameInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') joinBtn.click();
+});
+
+toggleReadyBtn.addEventListener('click', () => {
+    socket.emit('toggle_ready');
+});
+
+roomAddBotBtn.addEventListener('click', () => {
     socket.emit('add_bot');
 });
 
-playerNameInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') joinBtn.click();
+returnToRoomBtn.addEventListener('click', () => {
+    socket.emit('return_to_room');
 });
 
 sendChatBtn.addEventListener('click', sendChat);
@@ -119,23 +131,86 @@ socket.on('new_log', (log) => {
 socket.on('game_state', (state) => {
     currentGameState = state;
     
-    // Check if we transitioned from lobby to game
-    if (state.phase !== 'lobby' && loginScreen.classList.contains('active')) {
-        loginScreen.classList.remove('active');
-        gameScreen.classList.add('active');
-    }
+    const me = state.players.find(p => p.id === myId);
 
-    updateHeader(state);
-    updateMyStatus(state);
-    updateOtherPlayers(state);
-    updateActions(state);
-    
-    if (state.phase === 'game_over') {
-        showGameOver(state);
+    if (state.phase === 'lobby') {
+        if (!me) {
+            loginScreen.classList.add('active');
+            roomScreen.classList.remove('active');
+            gameScreen.classList.remove('active');
+        } else {
+            loginScreen.classList.remove('active');
+            roomScreen.classList.add('active');
+            gameScreen.classList.remove('active');
+            updateRoom(state);
+        }
+        overlay.classList.add('hidden');
+    } else {
+        loginScreen.classList.remove('active');
+        roomScreen.classList.remove('active');
+        gameScreen.classList.add('active');
+        
+        updateHeader(state);
+        updateMyStatus(state);
+        updateOtherPlayers(state);
+        updateActions(state);
+        
+        if (state.phase === 'game_over') {
+            showGameOver(state);
+        } else {
+            overlay.classList.add('hidden');
+        }
     }
 });
 
 // --- Render Functions ---
+
+function updateRoom(state) {
+    roomPlayersList.innerHTML = '';
+    state.players.forEach(p => {
+        const item = document.createElement('div');
+        item.style.display = 'flex';
+        item.style.justifyContent = 'space-between';
+        item.style.alignItems = 'center';
+        item.style.background = 'rgba(0,0,0,0.4)';
+        item.style.padding = '10px 20px';
+        item.style.borderRadius = '8px';
+        item.style.border = '1px solid rgba(120,50,150,0.3)';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.style.fontWeight = 'bold';
+        nameDiv.textContent = p.name + (p.id === myId ? ' (あなた)' : '');
+
+        const statusDiv = document.createElement('div');
+        statusDiv.style.fontWeight = 'bold';
+        if (p.isReady) {
+            statusDiv.style.color = '#2080a0'; // success color
+            statusDiv.textContent = '準備完了';
+        } else {
+            statusDiv.style.color = '#8a7a90'; // muted color
+            statusDiv.textContent = '準備中...';
+        }
+
+        item.appendChild(nameDiv);
+        item.appendChild(statusDiv);
+        roomPlayersList.appendChild(item);
+    });
+
+    const me = state.players.find(p => p.id === myId);
+    if (me && me.isReady) {
+        toggleReadyBtn.textContent = '準備完了を取り消す';
+        toggleReadyBtn.classList.remove('primary-btn');
+    } else {
+        toggleReadyBtn.textContent = '準備完了にする';
+        toggleReadyBtn.classList.add('primary-btn');
+    }
+
+    if (state.players.length >= 5) {
+        roomAddBotBtn.style.display = 'none';
+    } else {
+        roomAddBotBtn.style.display = 'inline-block';
+    }
+}
 
 function updateHeader(state) {
     roundNumberEl.textContent = state.round;

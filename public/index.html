@@ -18,10 +18,28 @@
                 <p class="description">探索者か、狂信者か。<br>5つの祭壇を巡る正体隠匿の儀式が始まる。</p>
                 <div class="input-group">
                     <input type="text" id="player-name-input" placeholder="探索者の名を入力" maxlength="10">
-                    <button id="join-btn" class="btn primary-btn">儀式に参加する</button>
-                    <button id="add-bot-btn" class="btn">CPUを追加</button>
+                    <button id="join-btn" class="btn primary-btn">ルームに入室する</button>
                 </div>
                 <div id="login-error" class="error-msg"></div>
+            </div>
+            <!-- 背景エフェクト用 -->
+            <div class="particles"></div>
+        </div>
+
+        <!-- ルーム画面 -->
+        <div id="room-screen" class="screen">
+            <div class="login-box glass-panel" style="max-width: 600px;">
+                <h2 class="title" style="font-size: 2rem;">オンラインルーム</h2>
+                <p class="description">5人集まり、全員が「準備完了」になると儀式が開始されます。</p>
+                
+                <div id="room-players-list" style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0; text-align: left;">
+                    <!-- 動的に追加 -->
+                </div>
+
+                <div class="input-group" style="margin-top: 2rem;">
+                    <button id="toggle-ready-btn" class="btn primary-btn">準備完了にする</button>
+                    <button id="room-add-bot-btn" class="btn">CPUを追加</button>
+                </div>
             </div>
             <!-- 背景エフェクト用 -->
             <div class="particles"></div>
@@ -91,6 +109,7 @@
             <div class="overlay-content glass-panel">
                 <h2 id="overlay-title">Game Over</h2>
                 <p id="overlay-desc"></p>
+                <button id="return-to-room-btn" class="btn primary-btn" style="margin-top: 2rem;">ルームに戻る</button>
             </div>
         </div>
     </div>
