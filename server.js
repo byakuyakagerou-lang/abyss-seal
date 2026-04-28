@@ -48,7 +48,8 @@ function createInitialGameState(roomId, roomName) {
             oneCardHand: false
         },
         pendingEventAction: null,
-        shuffledResultCards: []
+        shuffledResultCards: [],
+        currentEvent: null
     };
 }
 
@@ -202,9 +203,8 @@ function nextTurn(gameState) {
     triggerBotActions(gameState);
 }
 
-function triggerEvent(gameState) {
-    const event = EVENT_CARDS[Math.floor(Math.random() * EVENT_CARDS.length)];
-    addLog(gameState, `【神話イベント発生】: ${event.name} - ${event.desc}`);
+function applyEvent(gameState, event) {
+    addLog(gameState, `【神話イベント発動】: ${event.name} - ${event.desc}`);
     
     switch(event.id) {
         case 'deep_exposure':
@@ -262,7 +262,18 @@ function processResults(gameState) {
     if (!hasFail) {
         gameState.successCount++;
         addLog(gameState, `【儀式成功】祭壇の封印に成功しました！（成功: ${gameState.successCount}回）`);
-        triggerEvent(gameState);
+        
+        // 神話イベントのアニメーションフェーズへ移行
+        const event = EVENT_CARDS[Math.floor(Math.random() * EVENT_CARDS.length)];
+        gameState.phase = 'event_animation';
+        gameState.currentEvent = event;
+        broadcastState(gameState.id);
+        
+        setTimeout(() => {
+            if (rooms.has(gameState.id) && gameState.phase === 'event_animation') {
+                applyEvent(gameState, event);
+            }
+        }, 6000);
     } else {
         gameState.failCount++;
         addLog(gameState, `【儀式失敗】失敗カードが含まれていました。（失敗: ${gameState.failCount}回）`);

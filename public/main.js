@@ -52,6 +52,7 @@ let selectedOtherPlayerIds = [];
 let selectedCardIndex = null;
 let logsRestored = false;
 let isAnimatingResult = false;
+let isAnimatingEvent = false;
 let previousHand = [];
 let justRerolledIdx = null;
 
@@ -235,6 +236,14 @@ socket.on('game_state', (state) => {
             }
         } else {
             hideRitualAnimation();
+        }
+
+        if (state.phase === 'event_animation') {
+            if (!isAnimatingEvent) {
+                showEventAnimation(state);
+            }
+        } else {
+            hideEventAnimation();
         }
 
         // Restore logs if reconnected
@@ -606,6 +615,31 @@ function hideRitualAnimation() {
     const container = document.getElementById('ritual-animation-container');
     if (container) {
         container.classList.add('hidden');
+    }
+}
+
+function showEventAnimation(state) {
+    if (!state.currentEvent) return;
+    isAnimatingEvent = true;
+    const container = document.getElementById('event-animation-container');
+    container.classList.remove('hidden');
+    
+    container.innerHTML = `
+        <div class="abyss-bg"></div>
+        <div class="creepy-eye" style="top: 20%; left: 30%;"></div>
+        <div class="creepy-eye" style="top: 60%; right: 25%; animation-delay: 1.5s;"></div>
+        <div class="creepy-intro">深淵より何かが這い寄る……</div>
+        <div class="glitch-text shake-effect">${state.currentEvent.name}</div>
+        <div class="event-desc">${state.currentEvent.desc}</div>
+    `;
+}
+
+function hideEventAnimation() {
+    isAnimatingEvent = false;
+    const container = document.getElementById('event-animation-container');
+    if (container) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
     }
 }
 
