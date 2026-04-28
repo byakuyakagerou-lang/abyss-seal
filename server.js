@@ -294,7 +294,7 @@ function triggerBotActions(gameState) {
 
         if (gameState.phase === 'leader_selection') {
             const leader = gameState.players.find(p => p.id === gameState.leaderId);
-            if (leader && leader.isBot) {
+            if (leader && (leader.isBot || leader.san <= 0)) {
                 const reqCount = getRequiredParticipants(gameState.round);
                 let pool = gameState.players.map(p => p.id).filter(id => id !== leader.id).sort(() => Math.random() - 0.5);
                 let selected = [leader.id, ...pool.slice(0, reqCount - 1)];
@@ -323,7 +323,7 @@ function triggerBotActions(gameState) {
         }
         else if (gameState.phase === 'event_action') {
             const leader = gameState.players.find(p => p.id === gameState.leaderId);
-            if (leader && leader.isBot && gameState.pendingEventAction) {
+            if (leader && (leader.isBot || leader.san <= 0) && gameState.pendingEventAction) {
                 const count = gameState.pendingEventAction.count;
                 let pool = gameState.players.map(p => p.id).sort(() => Math.random() - 0.5);
                 handleEventAction(gameState, leader.id, pool.slice(0, count));

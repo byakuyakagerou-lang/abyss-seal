@@ -50,6 +50,7 @@ let myId = null;
 let currentGameState = null;
 let selectedOtherPlayerIds = [];
 let selectedCardIndex = null;
+let logsRestored = false;
 
 // --- Event Listeners ---
 createRoomBtn.addEventListener('click', () => {
@@ -225,7 +226,8 @@ socket.on('game_state', (state) => {
         }
 
         // Restore logs if reconnected
-        if (chatLog.children.length === 0 && state.logs && state.logs.length > 0) {
+        if (!logsRestored && state.logs && state.logs.length > 0) {
+            chatLog.innerHTML = '';
             state.logs.forEach(log => {
                 const div = document.createElement('div');
                 div.className = `chat-msg ${log.type}`;
@@ -233,6 +235,7 @@ socket.on('game_state', (state) => {
                 chatLog.appendChild(div);
             });
             chatLog.scrollTop = chatLog.scrollHeight;
+            logsRestored = true;
         }
     }
 });
@@ -241,7 +244,7 @@ socket.on('game_state', (state) => {
 
 function updateRoom(state) {
     roomPlayersList.innerHTML = '';
-    state.players.forEach(p => {
+    for (let i = 0; i < 5; i++) {
         const item = document.createElement('div');
         item.style.display = 'flex';
         item.style.justifyContent = 'space-between';
@@ -250,25 +253,39 @@ function updateRoom(state) {
         item.style.padding = '10px 20px';
         item.style.borderRadius = '8px';
         item.style.border = '1px solid rgba(120,50,150,0.3)';
+        item.style.minHeight = '24px';
 
-        const nameDiv = document.createElement('div');
-        nameDiv.style.fontWeight = 'bold';
-        nameDiv.textContent = p.name + (p.id === myId ? ' (あなた)' : '');
+        const p = state.players[i];
+        if (p) {
+            const nameDiv = document.createElement('div');
+            nameDiv.style.fontWeight = 'bold';
+            nameDiv.textContent = p.name + (p.id === myId ? ' (あなた)' : '');
 
-        const statusDiv = document.createElement('div');
-        statusDiv.style.fontWeight = 'bold';
-        if (p.isReady) {
-            statusDiv.style.color = '#2080a0'; // success color
-            statusDiv.textContent = '準備完了';
+            const statusDiv = document.createElement('div');
+            statusDiv.style.fontWeight = 'bold';
+            if (p.isReady) {
+                statusDiv.style.color = '#2080a0';
+                statusDiv.textContent = '準備完了';
+            } else {
+                statusDiv.style.color = '#8a7a90';
+                statusDiv.textContent = '準備中...';
+            }
+
+            item.appendChild(nameDiv);
+            item.appendChild(statusDiv);
         } else {
-            statusDiv.style.color = '#8a7a90'; // muted color
-            statusDiv.textContent = '準備中...';
+            const nameDiv = document.createElement('div');
+            nameDiv.style.color = 'var(--text-muted)';
+            nameDiv.textContent = '---- 空き ----';
+            
+            const statusDiv = document.createElement('div');
+            
+            item.appendChild(nameDiv);
+            item.appendChild(statusDiv);
         }
-
-        item.appendChild(nameDiv);
-        item.appendChild(statusDiv);
+        
         roomPlayersList.appendChild(item);
-    });
+    }
 
     const me = state.players.find(p => p.id === myId);
     if (me && me.isReady) {
@@ -452,20 +469,24 @@ function updateActions(state) {
     } 
     else if (state.phase === 'leader_selection') {
         if (state.leaderId === myId) {
-            // Auto-select self
-            if (!selectedOtherPlayerIds.includes(myId)) {
-                selectedOtherPlayerIds.push(myId);
-                // Trigger re-render to show selection visually
-                setTimeout(() => updateOtherPlayers(state), 0);
-            }
-
-            const req = getRequiredParticipants(state);
-            promptText = `あなたは祭祀長です。強制参加のあなたを含め、儀式に参加する ${req} 名を選んでください。`;
-            selectParticipantsBtn.classList.remove('hidden');
-            if (selectedOtherPlayerIds.length === req) {
-                selectParticipantsBtn.disabled = false;
+            if (me.san <= 0) {
+                promptText = "SAN値が0のため、参加者は自動的に選出されます...";
             } else {
-                selectParticipantsBtn.disabled = true;
+                // Auto-select self
+                if (!selectedOtherPlayerIds.includes(myId)) {
+                    selectedOtherPlayerIds.push(myId);
+                    // Trigger re-render to show selection visually
+                    setTimeout(() => updateOtherPlayers(state), 0);
+                }
+
+                const req = getRequiredParticipants(state);
+                promptText = `あなたは祭祀長です。強制参加のあなたを含め、儀式に参加する ${req} 名を選んでください。`;
+                selectParticipantsBtn.classList.remove('hidden');
+                if (selectedOtherPlayerIds.length === req) {
+                    selectParticipantsBtn.disabled = false;
+                } else {
+                    selectParticipantsBtn.disabled = true;
+                }
             }
         } else {
             const leader = state.players.find(p => p.id === state.leaderId);
@@ -504,9 +525,13 @@ function updateActions(state) {
     }
     else if (state.phase === 'event_action') {
         if (state.leaderId === myId && state.pendingEventAction) {
-            promptText = `神話イベント効果の対象を ${state.pendingEventAction.count} 名選んでください。`;
-            eventActionBtn.classList.remove('hidden');
-            eventActionBtn.disabled = selectedOtherPlayerIds.length !== state.pendingEventAction.count;
+            if (me.san <= 0) {
+                promptText = "SAN値が0のため、イベント対象は自動的に選出されます...";
+            } else {
+                promptText = `神話イベント効果の対象を ${state.pendingEventAction.count} 名選んでください。`;
+                eventActionBtn.classList.remove('hidden');
+                eventActionBtn.disabled = selectedOtherPlayerIds.length !== state.pendingEventAction.count;
+            }
         } else {
             promptText = "祭祀長が神話イベントの処理を行っています...";
         }
