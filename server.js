@@ -273,7 +273,7 @@ function processResults(gameState) {
             if (rooms.has(gameState.id) && gameState.phase === 'event_animation') {
                 applyEvent(gameState, event);
             }
-        }, 6000);
+        }, 10000); // 10秒間に延長しテキストを読めるようにする
     } else {
         gameState.failCount++;
         addLog(gameState, `【儀式失敗】失敗カードが含まれていました。（失敗: ${gameState.failCount}回）`);
