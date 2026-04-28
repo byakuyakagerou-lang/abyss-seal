@@ -274,6 +274,20 @@ function endRound(gameState) {
     nextTurn(gameState);
 }
 
+function updatePlayerIdReferences(gameState, oldId, newId) {
+    if (gameState.leaderId === oldId) gameState.leaderId = newId;
+    
+    const partIdx = gameState.participants.indexOf(oldId);
+    if (partIdx > -1) gameState.participants[partIdx] = newId;
+    
+    gameState.submittedCards.forEach(s => {
+        if (s.playerId === oldId) s.playerId = newId;
+    });
+    
+    const revIdx = gameState.activeEvents.handRevealed.indexOf(oldId);
+    if (revIdx > -1) gameState.activeEvents.handRevealed[revIdx] = newId;
+}
+
 function triggerBotActions(gameState) {
     setTimeout(() => {
         if (!rooms.has(gameState.id)) return;
@@ -457,8 +471,10 @@ io.on('connection', (socket) => {
             if (existing && !existing.isConnected && !existing.isBot) {
                 socket.join(gameState.id);
                 playerSocketMap.set(socket.id, gameState.id);
+                const oldId = existing.id;
                 existing.id = socket.id;
                 existing.isConnected = true;
+                updatePlayerIdReferences(gameState, oldId, socket.id);
                 addLog(gameState, `${playerName} が復帰しました。`);
                 socket.emit('joined_room', gameState.id);
                 broadcastState(gameState.id);
@@ -473,8 +489,10 @@ io.on('connection', (socket) => {
             if (!existingPlayer.isConnected && !existingPlayer.isBot) {
                 socket.join(gameState.id);
                 playerSocketMap.set(socket.id, gameState.id);
+                const oldId = existingPlayer.id;
                 existingPlayer.id = socket.id;
                 existingPlayer.isConnected = true;
+                updatePlayerIdReferences(gameState, oldId, socket.id);
                 addLog(gameState, `${playerName} が復帰しました。`);
                 socket.emit('joined_room', gameState.id);
                 checkGameStart(gameState);

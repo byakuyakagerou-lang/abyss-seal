@@ -223,6 +223,17 @@ socket.on('game_state', (state) => {
         } else {
             overlay.classList.add('hidden');
         }
+
+        // Restore logs if reconnected
+        if (chatLog.children.length === 0 && state.logs && state.logs.length > 0) {
+            state.logs.forEach(log => {
+                const div = document.createElement('div');
+                div.className = `chat-msg ${log.type}`;
+                div.textContent = log.msg;
+                chatLog.appendChild(div);
+            });
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
     }
 });
 
