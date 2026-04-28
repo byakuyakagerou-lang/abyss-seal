@@ -53,6 +53,7 @@ let selectedCardIndex = null;
 let logsRestored = false;
 let isAnimatingResult = false;
 let isAnimatingEvent = false;
+let isAnimatingManipulation = false;
 let previousHand = [];
 let justRerolledIdx = null;
 
@@ -246,6 +247,14 @@ socket.on('game_state', (state) => {
             hideEventAnimation();
         }
 
+        if (state.phase === 'manipulation_animation') {
+            if (!isAnimatingManipulation) {
+                showManipulationAnimation(state);
+            }
+        } else {
+            hideManipulationAnimation();
+        }
+
         // Restore logs if reconnected
         if (!logsRestored && state.logs && state.logs.length > 0) {
             chatLog.innerHTML = '';
@@ -331,6 +340,7 @@ function updateHeader(state) {
         'lobby': '待機中',
         'leader_selection': '儀式参加者選出',
         'card_submission': '供物提出',
+        'event_choice': '狂気への誘い',
         'event_action': '神話イベント処理',
         'result': '結果判定',
         'game_over': 'ゲーム終了'
@@ -409,8 +419,6 @@ function updateOtherPlayers(state) {
     const actionCount = state.pendingEventAction ? state.pendingEventAction.count : 0;
     
     state.players.forEach(p => {
-        // Can render self in the other players area for selection purposes during leader phase
-        // but maybe mark as "You"
         const isMe = p.id === myId;
         
         const card = document.createElement('div');
@@ -422,16 +430,19 @@ function updateOtherPlayers(state) {
         html += `<div class="player-role-unknown">${p.role === '???' ? '役職: ???' : `役職: ${p.role === 'Explorer' ? '探索者' : '狂信者'}`}</div>`;
         html += `<div class="player-san">SAN: ${p.san}</div>`;
         
-        // Show hand if revealed
-        if (state.activeEvents.handRevealed.includes(p.id) && !isMe) {
-            html += `<div class="other-hand">`;
-            p.hand.forEach(c => {
-                html += `<div class="mini-card ${c}"></div>`;
-            });
-            html += `</div>`;
-        }
-        
         card.innerHTML = html;
+        
+        // 公開された手札の表示
+        if (state.activeEvents.handRevealed.includes(p.id)) {
+            const handDiv = document.createElement('div');
+            handDiv.className = 'other-hand';
+            p.hand.forEach(cardVal => {
+                const mini = document.createElement('div');
+                mini.className = `mini-card ${cardVal}`;
+                handDiv.appendChild(mini);
+            });
+            card.appendChild(handDiv);
+        }
         
         // Selection Logic
         let isSelectable = false;
@@ -454,7 +465,6 @@ function updateOtherPlayers(state) {
 
             card.addEventListener('click', () => {
                 if (state.phase === 'leader_selection' && state.leaderId === myId && p.id === myId) {
-                    // Leader is forced to participate, cannot deselect self
                     return;
                 }
 
@@ -466,7 +476,6 @@ function updateOtherPlayers(state) {
                     if (selectedOtherPlayerIds.length < max) {
                         selectedOtherPlayerIds.push(p.id);
                     } else {
-                        // replace oldest (but do not replace leader self)
                         const shiftIdx = selectedOtherPlayerIds[0] === myId && state.phase === 'leader_selection' ? 1 : 0;
                         if (shiftIdx < selectedOtherPlayerIds.length) {
                             selectedOtherPlayerIds.splice(shiftIdx, 1);
@@ -479,16 +488,13 @@ function updateOtherPlayers(state) {
             });
         }
         
-        // Highlight participants
         if (state.phase !== 'leader_selection' && state.participants.includes(p.id)) {
             card.style.borderColor = '#2080a0';
             card.style.boxShadow = '0 0 10px rgba(32, 128, 160, 0.4)';
         }
         
-        // Indicate who has submitted
         if (state.phase === 'card_submission' && state.submittedCards.find(s => s.playerId === p.id)) {
              card.style.opacity = '0.7';
-             // Add a small checkmark text
              const check = document.createElement('div');
              check.textContent = '提出完了';
              check.style.color = '#2080a0';
@@ -501,11 +507,11 @@ function updateOtherPlayers(state) {
 }
 
 function updateActions(state) {
-    // Hide all first
     selectParticipantsBtn.classList.add('hidden');
     submitCardBtn.classList.add('hidden');
     rerollSanBtn.classList.add('hidden');
     eventActionBtn.classList.add('hidden');
+    actionControls.innerHTML = '';
     
     const me = state.players.find(p => p.id === myId);
     if (!me) return;
@@ -520,10 +526,8 @@ function updateActions(state) {
             if (me.san <= 0) {
                 promptText = "SAN値が0のため、参加者は自動的に選出されます...";
             } else {
-                // Auto-select self
                 if (!selectedOtherPlayerIds.includes(myId)) {
                     selectedOtherPlayerIds.push(myId);
-                    // Trigger re-render to show selection visually
                     setTimeout(() => updateOtherPlayers(state), 0);
                 }
 
@@ -571,6 +575,26 @@ function updateActions(state) {
             promptText = "儀式が進行中です...";
         }
     }
+    else if (state.phase === 'event_choice') {
+        if (state.pendingChoicePlayers.includes(myId)) {
+            promptText = "「狂気への誘い」の対象となりました。選択してください。";
+            
+            const btnSan = document.createElement('button');
+            btnSan.className = 'btn primary-btn';
+            btnSan.textContent = 'SAN値-1 を選ぶ';
+            btnSan.onclick = () => socket.emit('madness_choice', 'san');
+            
+            const btnDiscard = document.createElement('button');
+            btnDiscard.className = 'btn danger-btn';
+            btnDiscard.textContent = '成功カードを1枚破棄する';
+            btnDiscard.onclick = () => socket.emit('madness_choice', 'discard');
+            
+            actionControls.appendChild(btnSan);
+            actionControls.appendChild(btnDiscard);
+        } else {
+            promptText = "対象者が深淵の誘いに抗っています...";
+        }
+    }
     else if (state.phase === 'event_action') {
         if (state.leaderId === myId && state.pendingEventAction) {
             if (me.san <= 0) {
@@ -596,13 +620,11 @@ function showRitualAnimation(state) {
     container.classList.remove('hidden');
     cardsContainer.innerHTML = '';
     
-    // Create face-down cards
     state.shuffledResultCards.forEach((cardVal, index) => {
         const cardEl = document.createElement('div');
         cardEl.className = 'card hidden-card';
         cardsContainer.appendChild(cardEl);
         
-        // Flip animation one by one
         setTimeout(() => {
             cardEl.className = `card ${cardVal} flip-animation`;
             cardEl.textContent = cardVal === 'success' ? '成功' : '失敗';
@@ -637,6 +659,40 @@ function showEventAnimation(state) {
 function hideEventAnimation() {
     isAnimatingEvent = false;
     const container = document.getElementById('event-animation-container');
+    if (container) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+    }
+}
+
+function showManipulationAnimation(state) {
+    isAnimatingManipulation = true;
+    const container = document.getElementById('manipulation-animation-container');
+    container.classList.remove('hidden');
+    
+    const isBlind = state.activeEvents.blindSubmission;
+    let text = isBlind ? "盲目の狂信……供物は贄となる" : "狂気が手足を操る……";
+    let subText = state.manipulatedPlayerNames ? `対象: ${state.manipulatedPlayerNames}` : "";
+    
+    if (isBlind) {
+        container.style.background = 'radial-gradient(circle at center, transparent 0%, rgba(100, 0, 50, 0.6) 100%)';
+    } else {
+        container.style.background = ''; // Default CSS
+    }
+    
+    container.innerHTML = `
+        <div class="tentacle" style="left: 10%; animation-delay: 0.1s;"></div>
+        <div class="tentacle" style="left: 30%; width: 25px; animation-delay: 0.4s;"></div>
+        <div class="tentacle" style="left: 50%; width: 30px; animation-delay: 0s;"></div>
+        <div class="tentacle" style="left: 70%; width: 25px; animation-delay: 0.3s;"></div>
+        <div class="tentacle" style="left: 90%; animation-delay: 0.2s;"></div>
+        <div class="manipulation-text">${text}<br><span style="font-size: 1.5rem; opacity: 0.8;">${subText}</span></div>
+    `;
+}
+
+function hideManipulationAnimation() {
+    isAnimatingManipulation = false;
+    const container = document.getElementById('manipulation-animation-container');
     if (container) {
         container.classList.add('hidden');
         container.innerHTML = '';
