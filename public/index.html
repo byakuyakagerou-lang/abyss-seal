@@ -18,9 +18,24 @@
                 <p class="description">探索者か、狂信者か。<br>5つの祭壇を巡る正体隠匿の儀式が始まる。</p>
                 <div class="input-group">
                     <input type="text" id="player-name-input" placeholder="探索者の名を入力" maxlength="10">
-                    <button id="join-btn" class="btn primary-btn">ルームに入室する</button>
+                    <button id="create-room-btn" class="btn primary-btn">部屋を作成する</button>
+                    <button id="show-rooms-btn" class="btn">部屋を探す</button>
                 </div>
                 <div id="login-error" class="error-msg"></div>
+            </div>
+            <!-- 背景エフェクト用 -->
+            <div class="particles"></div>
+        </div>
+
+        <!-- 部屋一覧画面 -->
+        <div id="room-list-screen" class="screen">
+            <div class="login-box glass-panel" style="max-width: 600px; width: 90%;">
+                <h2 class="title" style="font-size: 2rem;">オンラインルーム一覧</h2>
+                <button id="refresh-rooms-btn" class="btn" style="margin-bottom: 1rem;">更新</button>
+                <div id="active-rooms-container" style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
+                    <!-- Rooms will be populated here -->
+                </div>
+                <button id="back-to-login-btn" class="btn" style="margin-top: 2rem;">戻る</button>
             </div>
             <!-- 背景エフェクト用 -->
             <div class="particles"></div>

@@ -57,7 +57,7 @@ body {
 }
 
 /* --- Login & Room Screens --- */
-#login-screen, #room-screen {
+#login-screen, #room-screen, #room-list-screen {
     justify-content: center;
     align-items: center;
     z-index: 10;

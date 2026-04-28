@@ -2,11 +2,17 @@ const socket = io();
 
 // DOM Elements
 const loginScreen = document.getElementById('login-screen');
+const roomListScreen = document.getElementById('room-list-screen');
 const roomScreen = document.getElementById('room-screen');
 const gameScreen = document.getElementById('game-screen');
 const playerNameInput = document.getElementById('player-name-input');
-const joinBtn = document.getElementById('join-btn');
+const createRoomBtn = document.getElementById('create-room-btn');
+const showRoomsBtn = document.getElementById('show-rooms-btn');
 const loginError = document.getElementById('login-error');
+
+const refreshRoomsBtn = document.getElementById('refresh-rooms-btn');
+const activeRoomsContainer = document.getElementById('active-rooms-container');
+const backToLoginBtn = document.getElementById('back-to-login-btn');
 
 const roomPlayersList = document.getElementById('room-players-list');
 const toggleReadyBtn = document.getElementById('toggle-ready-btn');
@@ -46,14 +52,31 @@ let selectedOtherPlayerIds = [];
 let selectedCardIndex = null;
 
 // --- Event Listeners ---
-joinBtn.addEventListener('click', () => {
+createRoomBtn.addEventListener('click', () => {
     const name = playerNameInput.value.trim();
     if (!name) return;
-    socket.emit('join_game', name);
+    socket.emit('create_room', null, name);
+});
+
+showRoomsBtn.addEventListener('click', () => {
+    const name = playerNameInput.value.trim();
+    if (!name) return;
+    loginScreen.classList.remove('active');
+    roomListScreen.classList.add('active');
+    socket.emit('get_rooms');
+});
+
+refreshRoomsBtn.addEventListener('click', () => {
+    socket.emit('get_rooms');
+});
+
+backToLoginBtn.addEventListener('click', () => {
+    roomListScreen.classList.remove('active');
+    loginScreen.classList.add('active');
 });
 
 playerNameInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') joinBtn.click();
+    if (e.key === 'Enter') createRoomBtn.click();
 });
 
 toggleReadyBtn.addEventListener('click', () => {
@@ -131,18 +154,54 @@ socket.on('new_log', (log) => {
     chatLog.scrollTop = chatLog.scrollHeight;
 });
 
+socket.on('room_list', (rooms) => {
+    activeRoomsContainer.innerHTML = '';
+    if (rooms.length === 0) {
+        activeRoomsContainer.innerHTML = '<div style="color: #ccc; text-align: center;">現在利用可能な部屋はありません。</div>';
+        return;
+    }
+    rooms.forEach(r => {
+        const item = document.createElement('div');
+        item.style.background = 'rgba(0,0,0,0.5)';
+        item.style.padding = '10px';
+        item.style.borderRadius = '5px';
+        item.style.border = '1px solid var(--panel-border)';
+        item.style.display = 'flex';
+        item.style.justifyContent = 'space-between';
+        item.style.alignItems = 'center';
+        item.style.cursor = 'pointer';
+        
+        let status = r.phase === 'lobby' ? `<span style="color:var(--success-color)">待機中 (${r.playerCount}/${r.maxPlayers})</span>` : `<span style="color:var(--danger-color)">進行中 (${r.playerCount}/${r.maxPlayers})</span>`;
+        
+        item.innerHTML = `<div><strong>${r.name}</strong></div><div>${status}</div>`;
+        item.addEventListener('click', () => {
+            const name = playerNameInput.value.trim();
+            socket.emit('join_room', r.id, name);
+        });
+        activeRoomsContainer.appendChild(item);
+    });
+});
+
+socket.on('joined_room', (roomId) => {
+    loginScreen.classList.remove('active');
+    roomListScreen.classList.remove('active');
+});
+
 socket.on('game_state', (state) => {
     currentGameState = state;
     
-    const me = state.players.find(p => p.id === myId);
+    const me = state.players.find(p => p.id === socket.id || (p.isConnected && p.name === playerNameInput.value.trim()));
+    if (me) myId = me.id; // Update myId in case we took over a session
 
     if (state.phase === 'lobby') {
         if (!me) {
             loginScreen.classList.add('active');
             roomScreen.classList.remove('active');
             gameScreen.classList.remove('active');
+            roomListScreen.classList.remove('active');
         } else {
             loginScreen.classList.remove('active');
+            roomListScreen.classList.remove('active');
             roomScreen.classList.add('active');
             gameScreen.classList.remove('active');
             updateRoom(state);
@@ -151,6 +210,7 @@ socket.on('game_state', (state) => {
     } else {
         loginScreen.classList.remove('active');
         roomScreen.classList.remove('active');
+        roomListScreen.classList.remove('active');
         gameScreen.classList.add('active');
         
         updateHeader(state);
