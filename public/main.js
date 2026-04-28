@@ -280,7 +280,7 @@ function updateOtherPlayers(state) {
         if (p.san <= 0) card.classList.add('is-dead');
         
         let html = `<div class="player-name">${p.name}${isMe ? ' (あなた)' : ''}</div>`;
-        html += `<div class="player-role-unknown">${p.role === '???' ? 'Role: ???' : `Role: ${p.role}`}</div>`;
+        html += `<div class="player-role-unknown">${p.role === '???' ? '役職: ???' : `役職: ${p.role === 'Explorer' ? '探索者' : '狂信者'}`}</div>`;
         html += `<div class="player-san">SAN: ${p.san}</div>`;
         
         // Show hand if revealed
@@ -314,6 +314,11 @@ function updateOtherPlayers(state) {
             }
 
             card.addEventListener('click', () => {
+                if (state.phase === 'leader_selection' && state.leaderId === myId && p.id === myId) {
+                    // Leader is forced to participate, cannot deselect self
+                    return;
+                }
+
                 const idx = selectedOtherPlayerIds.indexOf(p.id);
                 if (idx > -1) {
                     selectedOtherPlayerIds.splice(idx, 1);
@@ -322,9 +327,12 @@ function updateOtherPlayers(state) {
                     if (selectedOtherPlayerIds.length < max) {
                         selectedOtherPlayerIds.push(p.id);
                     } else {
-                        // replace oldest
-                        selectedOtherPlayerIds.shift();
-                        selectedOtherPlayerIds.push(p.id);
+                        // replace oldest (but do not replace leader self)
+                        const shiftIdx = selectedOtherPlayerIds[0] === myId && state.phase === 'leader_selection' ? 1 : 0;
+                        if (shiftIdx < selectedOtherPlayerIds.length) {
+                            selectedOtherPlayerIds.splice(shiftIdx, 1);
+                            selectedOtherPlayerIds.push(p.id);
+                        }
                     }
                 }
                 updateOtherPlayers(state);
@@ -370,8 +378,15 @@ function updateActions(state) {
     } 
     else if (state.phase === 'leader_selection') {
         if (state.leaderId === myId) {
+            // Auto-select self
+            if (!selectedOtherPlayerIds.includes(myId)) {
+                selectedOtherPlayerIds.push(myId);
+                // Trigger re-render to show selection visually
+                setTimeout(() => updateOtherPlayers(state), 0);
+            }
+
             const req = getRequiredParticipants(state);
-            promptText = `あなたは祭祀長です。儀式に参加する ${req} 名を選んでください。`;
+            promptText = `あなたは祭祀長です。強制参加のあなたを含め、儀式に参加する ${req} 名を選んでください。`;
             selectParticipantsBtn.classList.remove('hidden');
             if (selectedOtherPlayerIds.length === req) {
                 selectParticipantsBtn.disabled = false;

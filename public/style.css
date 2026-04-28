@@ -56,8 +56,8 @@ body {
     flex-direction: column;
 }
 
-/* --- Login Screen --- */
-#login-screen {
+/* --- Login & Room Screens --- */
+#login-screen, #room-screen {
     justify-content: center;
     align-items: center;
     z-index: 10;

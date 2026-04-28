@@ -266,8 +266,9 @@ function triggerBotActions() {
             const leader = gameState.players.find(p => p.id === gameState.leaderId);
             if (leader && leader.isBot) {
                 const reqCount = getRequiredParticipants();
-                let pool = gameState.players.map(p => p.id).sort(() => Math.random() - 0.5);
-                handleSelectParticipants(leader.id, pool.slice(0, reqCount));
+                let pool = gameState.players.map(p => p.id).filter(id => id !== leader.id).sort(() => Math.random() - 0.5);
+                let selected = [leader.id, ...pool.slice(0, reqCount - 1)];
+                handleSelectParticipants(leader.id, selected);
             }
         }
         else if (gameState.phase === 'card_submission') {
@@ -319,6 +320,11 @@ function handleSelectParticipants(playerId, selectedIds) {
     if (gameState.phase !== 'leader_selection' || playerId !== gameState.leaderId) return;
     const reqCount = getRequiredParticipants();
     if (selectedIds.length !== reqCount) return;
+
+    if (!selectedIds.includes(playerId)) {
+        // Enforce leader must participate
+        return;
+    }
 
     gameState.participants = selectedIds;
     gameState.phase = 'card_submission';
