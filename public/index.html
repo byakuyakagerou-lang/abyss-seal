@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>深淵の封印 - Abyss Seal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Serif+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- ログイン画面 -->
+        <div id="login-screen" class="screen active">
+            <div class="login-box glass-panel">
+                <h1 class="title">深淵の封印<br><span class="subtitle">Abyss Seal</span></h1>
+                <p class="description">探索者か、狂信者か。<br>5つの祭壇を巡る正体隠匿の儀式が始まる。</p>
+                <div class="input-group">
+                    <input type="text" id="player-name-input" placeholder="探索者の名を入力" maxlength="10">
+                    <button id="join-btn" class="btn primary-btn">儀式に参加する</button>
+                </div>
+                <div id="login-error" class="error-msg"></div>
+            </div>
+            <!-- 背景エフェクト用 -->
+            <div class="particles"></div>
+        </div>
+
+        <!-- ゲーム画面 -->
+        <div id="game-screen" class="screen">
+            <header class="game-header glass-panel">
+                <div class="round-info">
+                    <h2>第 <span id="round-number">1</span> の祭壇</h2>
+                    <p id="phase-name" class="phase-name">待機中</p>
+                </div>
+                <div class="ritual-status">
+                    <div class="status-item success">成功: <span id="success-count">0</span>/3</div>
+                    <div class="status-item fail">失敗: <span id="fail-count">0</span>/3</div>
+                    <div class="status-item deck">山札: <span id="deck-count">30</span>枚</div>
+                </div>
+            </header>
+
+            <main class="game-layout">
+                <!-- 左側：他プレイヤー情報＆メインボード -->
+                <section class="left-panel">
+                    <div class="other-players glass-panel" id="other-players-container">
+                        <!-- 他プレイヤーがここに動的に生成される -->
+                    </div>
+                    
+                    <div class="main-action-area glass-panel">
+                        <div id="action-prompt" class="action-prompt">他のプレイヤーの参加を待っています...</div>
+                        
+                        <div id="action-controls" class="action-controls">
+                            <!-- 状況に応じてボタンが切り替わる -->
+                            <button id="select-participants-btn" class="btn primary-btn hidden">儀式参加者を決定</button>
+                            <button id="submit-card-btn" class="btn primary-btn hidden">選択したカードを提出</button>
+                            <button id="reroll-san-btn" class="btn danger-btn hidden">SAN値を1消費して引き直す</button>
+                            <button id="event-action-btn" class="btn danger-btn hidden">対象を決定</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 右側：チャット＆ログ -->
+                <section class="right-panel">
+                    <div class="chat-container glass-panel">
+                        <div class="chat-log" id="chat-log"></div>
+                        <div class="chat-input-area">
+                            <input type="text" id="chat-input" placeholder="メッセージを入力...">
+                            <button id="send-chat-btn" class="btn">送信</button>
+                        </div>
+                    </div>
+                </section>
+            </main>
+
+            <!-- 下部：自分のステータス＆手札 -->
+            <footer class="player-dashboard glass-panel">
+                <div class="my-status">
+                    <h3 id="my-name">Player Name</h3>
+                    <div class="role-box" id="my-role">Role: ???</div>
+                    <div class="san-box">SAN: <span id="my-san" class="san-value">3</span>/3</div>
+                </div>
+                <div class="my-hand" id="my-hand-container">
+                    <!-- 手札がここに生成される -->
+                </div>
+            </footer>
+        </div>
+
+        <!-- オーバーレイ (ゲーム終了等) -->
+        <div id="overlay" class="overlay hidden">
+            <div class="overlay-content glass-panel">
+                <h2 id="overlay-title">Game Over</h2>
+                <p id="overlay-desc"></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
