@@ -526,12 +526,40 @@ input[type="text"]:focus {
     opacity: 0;
     animation: fadeInOut 4s forwards;
     letter-spacing: 5px;
-}
 @keyframes fadeInOut {
     0% { opacity: 0; transform: scale(1.5); }
     20% { opacity: 1; transform: scale(1); }
     80% { opacity: 1; }
     100% { opacity: 0; }
+}
+
+.game-over-anim {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+}
+.game-over-anim-text {
+    font-size: 5rem;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 20px currentColor;
+    animation: zoomInFade 3s ease-in-out forwards;
+}
+.victory-text {
+    color: #4CAF50;
+}
+.defeat-text {
+    color: #f44336;
+}
+@keyframes zoomInFade {
+    0% { transform: scale(0.5); opacity: 0; }
+    20% { transform: scale(1.1); opacity: 1; }
+    80% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
 }
 
 .player-card.selectable:hover .player-select-overlay {

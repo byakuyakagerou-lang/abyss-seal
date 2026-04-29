@@ -264,6 +264,23 @@ socket.on('game_state', (state) => {
             hideManipulationAnimation();
         }
 
+        if (state.phase === 'game_over_animation') {
+            const container = document.getElementById('game-over-anim-container');
+            if (container) {
+                container.classList.remove('hidden');
+                const isVictory = state.winner === 'Explorer';
+                const text = isVictory ? "VICTORY" : "DEFEAT";
+                const colorClass = isVictory ? "victory-text" : "defeat-text";
+                container.innerHTML = `<div class="game-over-anim-text ${colorClass}">${text}</div>`;
+            }
+        } else {
+            const container = document.getElementById('game-over-anim-container');
+            if (container) {
+                container.classList.add('hidden');
+                container.innerHTML = '';
+            }
+        }
+
         // Restore logs if reconnected
         if (!logsRestored && state.logs && state.logs.length > 0) {
             chatLog.innerHTML = '';
@@ -352,6 +369,7 @@ function updateHeader(state) {
         'event_choice': '狂気への誘い',
         'event_action': '神話イベント処理',
         'result': '結果判定',
+        'game_over_animation': '決着',
         'game_over': 'ゲーム終了'
     };
     phaseNameEl.textContent = phaseNames[state.phase] || state.phase;

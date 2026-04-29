@@ -134,13 +134,13 @@ function getRequiredParticipants(round) {
 function checkGameOver(gameState) {
     if (gameState.successCount >= 3) {
         gameState.winner = 'Explorer';
-        gameState.phase = 'game_over';
+        gameState.phase = 'game_over_animation';
         addLog(gameState, "【ゲーム終了】儀式が3回成功しました。探索者陣営の勝利です！");
         return true;
     }
     if (gameState.failCount >= 3) {
         gameState.winner = 'Cultist';
-        gameState.phase = 'game_over';
+        gameState.phase = 'game_over_animation';
         addLog(gameState, "【ゲーム終了】儀式が3回失敗しました。狂信者陣営の勝利です！");
         return true;
     }
@@ -149,14 +149,14 @@ function checkGameOver(gameState) {
     const allExplorersMad = explorers.every(p => p.san <= 0);
     if (allExplorersMad) {
         gameState.winner = 'Cultist';
-        gameState.phase = 'game_over';
+        gameState.phase = 'game_over_animation';
         addLog(gameState, "【ゲーム終了】探索者が全員発狂しました。狂信者陣営の勝利です！");
         return true;
     }
     
     if (gameState.round > 5) {
         gameState.winner = 'Cultist';
-        gameState.phase = 'game_over';
+        gameState.phase = 'game_over_animation';
         addLog(gameState, "【ゲーム終了】5回の儀式が終了しました。狂信者陣営の勝利です！");
         return true;
     }
@@ -166,6 +166,12 @@ function checkGameOver(gameState) {
 function nextTurn(gameState) {
     if (checkGameOver(gameState)) {
         broadcastState(gameState.id);
+        setTimeout(() => {
+            if (rooms.has(gameState.id)) {
+                gameState.phase = 'game_over';
+                broadcastState(gameState.id);
+            }
+        }, 3000);
         return;
     }
 
@@ -267,17 +273,21 @@ function processResults(gameState) {
         gameState.successCount++;
         addLog(gameState, `【儀式成功】祭壇の封印に成功しました！（成功: ${gameState.successCount}回）`);
         
-        // 神話イベントのアニメーションフェーズへ移行
-        const event = EVENT_CARDS[Math.floor(Math.random() * EVENT_CARDS.length)];
-        gameState.phase = 'event_animation';
-        gameState.currentEvent = event;
-        broadcastState(gameState.id);
-        
-        setTimeout(() => {
-            if (rooms.has(gameState.id) && gameState.phase === 'event_animation') {
-                applyEvent(gameState, event);
-            }
-        }, 10000); // 10秒間に延長しテキストを読めるようにする
+        if (gameState.successCount >= 3) {
+            endRound(gameState);
+        } else {
+            // 神話イベントのアニメーションフェーズへ移行
+            const event = EVENT_CARDS[Math.floor(Math.random() * EVENT_CARDS.length)];
+            gameState.phase = 'event_animation';
+            gameState.currentEvent = event;
+            broadcastState(gameState.id);
+            
+            setTimeout(() => {
+                if (rooms.has(gameState.id) && gameState.phase === 'event_animation') {
+                    applyEvent(gameState, event);
+                }
+            }, 10000); // 10秒間に延長しテキストを読めるようにする
+        }
     } else {
         gameState.failCount++;
         addLog(gameState, `【儀式失敗】失敗カードが含まれていました。（失敗: ${gameState.failCount}回）`);
@@ -463,9 +473,9 @@ function handleRerollSan(gameState, playerId, cardIndex) {
 
     player.san -= 1;
     const oldCard = player.hand.splice(cardIndex, 1)[0];
+    player.hand.push(...drawCards(gameState, 1));
     gameState.deck.push(oldCard);
     gameState.deck.sort(() => Math.random() - 0.5);
-    player.hand.push(...drawCards(gameState, 1));
 
     addLog(gameState, `${player.name} がSAN値を消費して手札を1枚引き直しました。`);
 
