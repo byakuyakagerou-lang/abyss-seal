@@ -201,13 +201,17 @@ socket.on('room_list', (rooms) => {
 socket.on('joined_room', (roomId) => {
     loginScreen.classList.remove('active');
     roomListScreen.classList.remove('active');
+    roomScreen.classList.add('active');
 });
 
 socket.on('game_state', (state) => {
     currentGameState = state;
     
-    const me = state.players.find(p => p.id === socket.id || (p.isConnected && p.name === playerNameInput.value.trim()));
-    if (me) myId = me.id; // Update myId in case we took over a session
+    // me の検索: socket.id → 名前でフォールバック
+    const playerName = playerNameInput.value.trim();
+    const me = state.players.find(p => p.id === socket.id)
+             || state.players.find(p => p.name === playerName && !p.isBot);
+    if (me) myId = me.id;
 
     if (state.phase === 'lobby') {
         if (!me) {
