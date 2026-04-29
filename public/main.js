@@ -432,22 +432,17 @@ function updateOtherPlayers(state) {
         
         card.innerHTML = html;
         
-        // 公開された手札の表示
-        if (state.activeEvents.handRevealed.includes(p.id)) {
-            const handDiv = document.createElement('div');
-            handDiv.className = 'other-hand';
-            p.hand.forEach(cardVal => {
-                const mini = document.createElement('div');
-                mini.className = `mini-card ${cardVal}`;
-                handDiv.appendChild(mini);
-            });
-            card.appendChild(handDiv);
-        }
-        
         // Selection Logic
         let isSelectable = false;
         if (state.phase === 'leader_selection' && state.leaderId === myId) {
             isSelectable = true;
+            if (isMe) {
+                card.style.borderColor = 'var(--primary-color)';
+                card.style.boxShadow = '0 0 15px rgba(200, 40, 60, 0.5)';
+            } else if (selectedOtherPlayerIds.includes(p.id)) {
+                card.style.borderColor = 'var(--primary-color)';
+                card.style.boxShadow = '0 0 10px rgba(200, 40, 60, 0.3)';
+            }
         } else if (state.phase === 'event_action' && state.leaderId === myId && state.pendingEventAction) {
             isSelectable = true;
         }
@@ -511,7 +506,6 @@ function updateActions(state) {
     submitCardBtn.classList.add('hidden');
     rerollSanBtn.classList.add('hidden');
     eventActionBtn.classList.add('hidden');
-    actionControls.innerHTML = '';
     
     const me = state.players.find(p => p.id === myId);
     if (!me) return;
@@ -573,26 +567,6 @@ function updateActions(state) {
             }
         } else {
             promptText = "儀式が進行中です...";
-        }
-    }
-    else if (state.phase === 'event_choice') {
-        if (state.pendingChoicePlayers.includes(myId)) {
-            promptText = "「狂気への誘い」の対象となりました。選択してください。";
-            
-            const btnSan = document.createElement('button');
-            btnSan.className = 'btn primary-btn';
-            btnSan.textContent = 'SAN値-1 を選ぶ';
-            btnSan.onclick = () => socket.emit('madness_choice', 'san');
-            
-            const btnDiscard = document.createElement('button');
-            btnDiscard.className = 'btn danger-btn';
-            btnDiscard.textContent = '成功カードを1枚破棄する';
-            btnDiscard.onclick = () => socket.emit('madness_choice', 'discard');
-            
-            actionControls.appendChild(btnSan);
-            actionControls.appendChild(btnDiscard);
-        } else {
-            promptText = "対象者が深淵の誘いに抗っています...";
         }
     }
     else if (state.phase === 'event_action') {
@@ -672,7 +646,6 @@ function showManipulationAnimation(state) {
     
     const isBlind = state.activeEvents.blindSubmission;
     let text = isBlind ? "盲目の狂信……供物は贄となる" : "狂気が手足を操る……";
-    let subText = state.manipulatedPlayerNames ? `対象: ${state.manipulatedPlayerNames}` : "";
     
     if (isBlind) {
         container.style.background = 'radial-gradient(circle at center, transparent 0%, rgba(100, 0, 50, 0.6) 100%)';
@@ -686,7 +659,7 @@ function showManipulationAnimation(state) {
         <div class="tentacle" style="left: 50%; width: 30px; animation-delay: 0s;"></div>
         <div class="tentacle" style="left: 70%; width: 25px; animation-delay: 0.3s;"></div>
         <div class="tentacle" style="left: 90%; animation-delay: 0.2s;"></div>
-        <div class="manipulation-text">${text}<br><span style="font-size: 1.5rem; opacity: 0.8;">${subText}</span></div>
+        <div class="manipulation-text">${text}</div>
     `;
 }
 
