@@ -526,6 +526,7 @@ input[type="text"]:focus {
     opacity: 0;
     animation: fadeInOut 4s forwards;
     letter-spacing: 5px;
+}
 @keyframes fadeInOut {
     0% { opacity: 0; transform: scale(1.5); }
     20% { opacity: 1; transform: scale(1); }
