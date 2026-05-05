@@ -11,6 +11,11 @@
 </head>
 <body>
     <div id="app">
+        <audio id="bgm-player" loop>
+            <!-- srcは後からでも追加可能ですが、まずはこのタグにファイルパスを設定してください -->
+            <source src="bgm.mp3" type="audio/mpeg">
+        </audio>
+
         <!-- ログイン画面 -->
         <div id="login-screen" class="screen active">
             <div class="login-box glass-panel">
@@ -51,6 +56,20 @@
                     <!-- 動的に追加 -->
                 </div>
 
+                <div id="deck-ratio-setting" class="deck-ratio-setting">
+                    <label class="setting-label">デッキ構成比率（成功 : 失敗）</label>
+                    <div class="ratio-buttons">
+                        <button id="ratio-1-1" class="ratio-btn active" data-ratio="1:1">
+                            <span>1:1（15:15）</span>
+                            <span class="ratio-desc">基本ルール（狂信者やや有利）</span>
+                        </button>
+                        <button id="ratio-3-2" class="ratio-btn" data-ratio="3:2">
+                            <span>3:2（18:12）</span>
+                            <span class="ratio-desc">探索者緩和ルール</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div class="input-group" style="margin-top: 2rem;">
                     <button id="toggle-ready-btn" class="btn primary-btn">準備完了にする</button>
                     <button id="room-add-bot-btn" class="btn">CPUを追加</button>
@@ -68,9 +87,30 @@
                     <p id="phase-name" class="phase-name">待機中</p>
                 </div>
                 <div class="ritual-status">
+                    <!-- Audio Settings (Header Integrated) -->
+                    <div id="audio-controls" class="audio-controls">
+                        <div class="audio-header">♪ サウンド設定</div>
+                        <div class="volume-slider-group">
+                            <label for="bgm-volume">BGM</label>
+                            <input type="range" id="bgm-volume" min="0" max="100" value="30">
+                            <span id="bgm-vol-text" class="vol-value">30%</span>
+                        </div>
+                        <div class="volume-slider-group">
+                            <label for="se-volume">SE</label>
+                            <input type="range" id="se-volume" min="0" max="100" value="50">
+                            <span id="se-vol-text" class="vol-value">50%</span>
+                        </div>
+                    </div>
+                    <div class="status-separator"></div>
                     <div class="status-item success">成功: <span id="success-count">0</span>/3</div>
                     <div class="status-item fail">失敗: <span id="fail-count">0</span>/3</div>
                     <div class="status-item deck">山札: <span id="deck-count">30</span>枚</div>
+                    <div class="status-item discard" id="discard-item" title="捨て札の内訳">捨札: <span id="discard-count">0</span>枚
+                        <div class="discard-tooltip" id="discard-tooltip">
+                            <div>成功: <span id="discard-success">0</span>枚</div>
+                            <div>失敗: <span id="discard-fail">0</span>枚</div>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -124,6 +164,12 @@
             <div id="ritual-animation-container" class="ritual-animation hidden">
                 <div class="ritual-animation-title">儀式結果</div>
                 <div class="ritual-animation-cards" id="ritual-animation-cards"></div>
+            </div>
+
+            <!-- 結果アナウンス用（成功/失敗の表示と次の儀式へ） -->
+            <div id="result-announce-container" class="result-announce-container hidden">
+                <div class="announce-content" id="result-announce-content"></div>
+                <div class="announce-subtext" id="result-announce-subtext"></div>
             </div>
 
             <!-- 神話イベントアニメーション用 -->

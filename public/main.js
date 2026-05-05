@@ -47,6 +47,212 @@ const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayDesc = document.getElementById('overlay-desc');
 
+// Audio State & Setup
+let audioCtx = null;
+const bgmPlayer = document.getElementById('bgm-player');
+const bgmVolumeSlider = document.getElementById('bgm-volume');
+const seVolumeSlider = document.getElementById('se-volume');
+const bgmVolText = document.getElementById('bgm-vol-text');
+const seVolText = document.getElementById('se-vol-text');
+
+let seVolume = parseInt(seVolumeSlider.value) / 100;
+bgmPlayer.volume = parseInt(bgmVolumeSlider.value) / 100;
+
+bgmVolumeSlider.addEventListener('input', (e) => {
+    bgmPlayer.volume = parseInt(e.target.value) / 100;
+    bgmVolText.textContent = e.target.value + '%';
+});
+seVolumeSlider.addEventListener('input', (e) => {
+    seVolume = parseInt(e.target.value) / 100;
+    seVolText.textContent = e.target.value + '%';
+});
+
+let noiseBuffer = null;
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // ノイズバッファの生成（紙の音や環境音用）
+        const bufferSize = audioCtx.sampleRate * 2;
+        noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            output[i] = Math.random() * 2 - 1;
+        }
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    if (bgmPlayer.paused) {
+        bgmPlayer.play().catch(e => console.log('BGM autoplay prevented', e));
+    }
+}
+
+// Ensure audio context starts on first interaction
+document.body.addEventListener('click', initAudio, { once: true });
+
+function playSE(type) {
+    if (!audioCtx || seVolume === 0) return;
+    
+    const now = audioCtx.currentTime;
+    const gainNode = audioCtx.createGain();
+    gainNode.connect(audioCtx.destination);
+    
+    let osc;
+    let duration = 0.1;
+    
+    // おどろおどろしい効果音
+    switch (type) {
+        case 'click':
+            // 低く重いクリック音（心音のようなThump）
+            osc = audioCtx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(80, now);
+            osc.frequency.exponentialRampToValueAtTime(20, now + 0.1);
+            gainNode.gain.setValueAtTime(seVolume * 0.8, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            duration = 0.1;
+            osc.connect(gainNode);
+            osc.start(now);
+            osc.stop(now + duration);
+            break;
+            
+        case 'select':
+            // 鈍い金属音
+            osc = audioCtx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, now);
+            
+            const lowpass = audioCtx.createBiquadFilter();
+            lowpass.type = 'lowpass';
+            lowpass.frequency.setValueAtTime(300, now);
+            lowpass.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+            
+            osc.connect(lowpass);
+            lowpass.connect(gainNode);
+            
+            gainNode.gain.setValueAtTime(seVolume * 0.4, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            duration = 0.15;
+            osc.start(now);
+            osc.stop(now + duration);
+            break;
+            
+        case 'flip':
+            // カードがこすれるようなノイズ（Bandpass Filter）
+            if (noiseBuffer) {
+                const noiseSource = audioCtx.createBufferSource();
+                noiseSource.buffer = noiseBuffer;
+                
+                const bandpass = audioCtx.createBiquadFilter();
+                bandpass.type = 'bandpass';
+                bandpass.frequency.value = 1200;
+                
+                noiseSource.connect(bandpass);
+                bandpass.connect(gainNode);
+                
+                gainNode.gain.setValueAtTime(seVolume * 0.5, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                
+                noiseSource.start(now);
+                noiseSource.stop(now + 0.2);
+            }
+            break;
+            
+        case 'success':
+            // 成功：暗く響く鐘の音
+            osc = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
+            osc.type = 'sine';
+            osc2.type = 'sine';
+            osc.frequency.setValueAtTime(220, now); // A3
+            osc2.frequency.setValueAtTime(220 * 2.76, now); // ベル特有の不協和音
+            
+            osc.connect(gainNode);
+            osc2.connect(gainNode);
+            
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(seVolume * 0.5, now + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 2);
+            duration = 2;
+            
+            osc.start(now);
+            osc2.start(now);
+            osc.stop(now + duration);
+            osc2.stop(now + duration);
+            break;
+            
+        case 'fail':
+            // 失敗：不穏な低音の地鳴りとノイズ
+            osc = audioCtx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(60, now); // 地鳴り
+            
+            const filterFail = audioCtx.createBiquadFilter();
+            filterFail.type = 'lowpass';
+            filterFail.frequency.setValueAtTime(100, now);
+            filterFail.frequency.exponentialRampToValueAtTime(2000, now + 0.5);
+            
+            osc.connect(filterFail);
+            filterFail.connect(gainNode);
+            
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(seVolume * 0.7, now + 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+            duration = 1.5;
+            
+            osc.start(now);
+            osc.stop(now + duration);
+            break;
+            
+        case 'error':
+            // イベント発生時：不気味な金属の摩擦音
+            osc = audioCtx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(40, now);
+            
+            const filterErr = audioCtx.createBiquadFilter();
+            filterErr.type = 'bandpass';
+            filterErr.frequency.setValueAtTime(200, now);
+            filterErr.frequency.linearRampToValueAtTime(1500, now + 0.8);
+            
+            osc.connect(filterErr);
+            filterErr.connect(gainNode);
+            
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(seVolume * 0.6, now + 0.1);
+            gainNode.gain.linearRampToValueAtTime(0.01, now + 2.5);
+            duration = 2.5;
+            
+            osc.start(now);
+            osc.stop(now + duration);
+            break;
+            
+        case 'start':
+            // ゲーム開始：深淵のゴング
+            osc = audioCtx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(100, now);
+            osc.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+            gainNode.gain.setValueAtTime(seVolume * 0.6, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+            duration = 1.5;
+            
+            osc.connect(gainNode);
+            osc.start(now);
+            osc.stop(now + duration);
+            break;
+    }
+}
+
+// 全てのボタンにクリックSEを追加
+document.querySelectorAll('.btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        playSE('click');
+        initAudio(); // ボタンクリックでも確実にオーディオ初期化
+    });
+});
+
 // State
 let myId = null;
 let currentGameState = null;
@@ -93,6 +299,14 @@ toggleReadyBtn.addEventListener('click', () => {
 
 roomAddBotBtn.addEventListener('click', () => {
     socket.emit('add_bot');
+});
+
+// Deck ratio buttons
+document.querySelectorAll('.ratio-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const ratio = btn.dataset.ratio;
+        socket.emit('set_deck_ratio', ratio);
+    });
 });
 
 returnToRoomBtn.addEventListener('click', () => {
@@ -252,6 +466,12 @@ socket.on('game_state', (state) => {
             hideRitualAnimation();
         }
 
+        if (state.phase === 'result_announce') {
+            showResultAnnounceAnimation(state);
+        } else {
+            hideResultAnnounceAnimation();
+        }
+
         if (state.phase === 'event_animation') {
             if (!isAnimatingEvent) {
                 showEventAnimation(state);
@@ -272,7 +492,10 @@ socket.on('game_state', (state) => {
             const container = document.getElementById('game-over-anim-container');
             if (container) {
                 container.classList.remove('hidden');
-                const isVictory = state.winner === 'Explorer';
+                const me = state.players.find(p => p.id === myId);
+                const myRole = me ? me.role : 'Explorer';
+                // 自分の役職と勝者が一致すればVICTORY、そうでなければDEFEAT
+                const isVictory = state.winner === myRole;
                 const text = isVictory ? "VICTORY" : "DEFEAT";
                 const colorClass = isVictory ? "victory-text" : "defeat-text";
                 container.innerHTML = `<div class="game-over-anim-text ${colorClass}">${text}</div>`;
@@ -361,6 +584,16 @@ function updateRoom(state) {
     } else {
         roomAddBotBtn.style.display = 'inline-block';
     }
+
+    // デッキ比率ボタンの同期
+    const currentRatio = state.deckRatio || '1:1';
+    document.querySelectorAll('.ratio-btn').forEach(btn => {
+        if (btn.dataset.ratio === currentRatio) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
 }
 
 function updateHeader(state) {
@@ -381,6 +614,14 @@ function updateHeader(state) {
     successCountEl.textContent = state.successCount;
     failCountEl.textContent = state.failCount;
     deckCountEl.textContent = typeof state.deck === 'number' ? state.deck : state.deck.length;
+
+    // 捨て札表示
+    const discardCountEl = document.getElementById('discard-count');
+    const discardSuccessEl = document.getElementById('discard-success');
+    const discardFailEl = document.getElementById('discard-fail');
+    if (discardCountEl) discardCountEl.textContent = state.discardCount || 0;
+    if (discardSuccessEl) discardSuccessEl.textContent = state.discardSuccessCount || 0;
+    if (discardFailEl) discardFailEl.textContent = state.discardFailCount || 0;
 }
 
 function updateMyStatus(state) {
@@ -428,11 +669,12 @@ function updateMyStatus(state) {
     Array.from(myHandContainer.children).forEach((card, idx) => {
         card.className = card.dataset.baseClass; // Reset to base classes
 
-        if (state.phase === 'card_submission' && state.participants.includes(myId) && !state.submittedCards.find(s=>s.playerId === myId) && me.san > 0 && !state.activeEvents.blindSubmission) {
+        if (state.phase === 'card_submission' && state.participants.includes(myId) && !state.submittedCards.find(s=>s.playerId === myId) && me.san > 0) {
             card.classList.add('playable');
             if (idx === selectedCardIndex) card.classList.add('selected');
             
             card.onclick = () => {
+                if (selectedCardIndex !== idx) playSE('select');
                 selectedCardIndex = idx;
                 updateMyStatus(state);
                 updateActions(state);
@@ -463,13 +705,17 @@ function updateOtherPlayers(state) {
         
         card.innerHTML = html;
         
-        // 公開された手札の表示
-        if (state.activeEvents.handRevealed.includes(p.id)) {
+        // 手札の表示（裏面 or 公開）
+        if (p.hand && p.hand.length > 0) {
             const handDiv = document.createElement('div');
             handDiv.className = 'other-hand';
             p.hand.forEach(cardVal => {
                 const mini = document.createElement('div');
-                mini.className = `mini-card ${cardVal}`;
+                if (cardVal === 'hidden') {
+                    mini.className = 'mini-card card-back';
+                } else {
+                    mini.className = `mini-card ${cardVal}`;
+                }
                 handDiv.appendChild(mini);
             });
             card.appendChild(handDiv);
@@ -505,6 +751,8 @@ function updateOtherPlayers(state) {
                 if (state.phase === 'leader_selection' && state.leaderId === myId && p.id === myId) {
                     return;
                 }
+
+                playSE('select');
 
                 const idx = selectedOtherPlayerIds.indexOf(p.id);
                 if (idx > -1) {
@@ -589,8 +837,8 @@ function updateActions(state) {
             const hasSubmitted = state.submittedCards.find(s => s.playerId === myId);
             if (hasSubmitted) {
                 promptText = "他の参加者の提出を待っています...";
-            } else if (me.san <= 0 || state.activeEvents.blindSubmission) {
-                promptText = "自動的にカードが抽出されます...";
+            } else if (me.san <= 0) {
+                actionControls.innerHTML = `<p class="info-text">狂気が手足を操る……</p>`;
             } else {
                 promptText = "提出または引き直すカードを選択してください。";
                 
@@ -616,9 +864,17 @@ function updateActions(state) {
     }
     else if (state.phase === 'event_choice') {
         if (state.pendingChoicePlayers.includes(myId)) {
+            const hasSuccessCard = me.hand.includes('success');
             promptText = "「狂気への誘い」の対象となりました。選択してください。";
             madnessSanBtn.classList.remove('hidden');
             madnessDiscardBtn.classList.remove('hidden');
+            if (!hasSuccessCard) {
+                madnessDiscardBtn.disabled = true;
+                madnessDiscardBtn.title = '手札に成功カードがありません';
+            } else {
+                madnessDiscardBtn.disabled = false;
+                madnessDiscardBtn.title = '';
+            }
         } else {
             promptText = "対象者が深淵の誘いに抗っています...";
         }
@@ -654,6 +910,7 @@ function showRitualAnimation(state) {
         cardsContainer.appendChild(cardEl);
         
         setTimeout(() => {
+            playSE('flip');
             cardEl.className = `card ${cardVal} flip-animation`;
             cardEl.textContent = cardVal === 'success' ? '成功' : '失敗';
         }, (index + 1) * 1500);
@@ -668,9 +925,46 @@ function hideRitualAnimation() {
     }
 }
 
+function showResultAnnounceAnimation(state) {
+    if (!state.resultAnnounce) return;
+    const container = document.getElementById('result-announce-container');
+    const content = document.getElementById('result-announce-content');
+    const subtext = document.getElementById('result-announce-subtext');
+    
+    container.classList.remove('hidden');
+    
+    if (state.resultAnnounce.success) {
+        playSE('success');
+        content.className = 'announce-content success';
+        content.textContent = '儀式の阻止 成功';
+        if (state.resultAnnounce.successCount >= 3) {
+            subtext.textContent = `成功：${state.resultAnnounce.successCount}回 / 探索者の勝利！`;
+        } else {
+            subtext.textContent = `成功：${state.resultAnnounce.successCount}回 / 次の儀式へ移行します...`;
+        }
+    } else {
+        playSE('fail');
+        content.className = 'announce-content fail';
+        content.textContent = '儀式の阻止 失敗';
+        if (state.resultAnnounce.failCount >= 3) {
+            subtext.textContent = `失敗：${state.resultAnnounce.failCount}回 / 狂信者の勝利！`;
+        } else {
+            subtext.textContent = `失敗：${state.resultAnnounce.failCount}回 / 次の儀式へ移行します...`;
+        }
+    }
+}
+
+function hideResultAnnounceAnimation() {
+    const container = document.getElementById('result-announce-container');
+    if (container) {
+        container.classList.add('hidden');
+    }
+}
+
 function showEventAnimation(state) {
     if (!state.currentEvent) return;
     isAnimatingEvent = true;
+    playSE('error');
     const container = document.getElementById('event-animation-container');
     container.classList.remove('hidden');
     
@@ -698,15 +992,9 @@ function showManipulationAnimation(state) {
     const container = document.getElementById('manipulation-animation-container');
     container.classList.remove('hidden');
     
-    const isBlind = state.activeEvents.blindSubmission;
-    let text = isBlind ? "盲目の狂信……供物は贄となる" : "狂気が手足を操る……";
+    let text = "狂気が手足を操る……";
     let subText = state.manipulatedPlayerNames ? `対象: ${state.manipulatedPlayerNames}` : "";
-    
-    if (isBlind) {
-        container.style.background = 'radial-gradient(circle at center, transparent 0%, rgba(100, 0, 50, 0.6) 100%)';
-    } else {
-        container.style.background = ''; // Default CSS
-    }
+    container.style.background = '';
     
     container.innerHTML = `
         <div class="tentacle" style="left: 10%; animation-delay: 0.1s;"></div>
@@ -732,8 +1020,8 @@ function showGameOver(state) {
     overlayTitle.textContent = state.winner === 'Explorer' ? '探索者の勝利' : '狂信者の勝利';
     
     let desc = "";
-    if (state.successCount >= 3) desc = "儀式が3回成功し、世界は救われました。";
-    else if (state.failCount >= 3) desc = "儀式が3回失敗し、深淵の封印は解かれました。";
+    if (state.successCount >= 3) desc = "儀式を阻止することに3回成功し、世界は救われました。";
+    else if (state.failCount >= 3) desc = "儀式の阻止に3回失敗し、深淵の封印は解かれました。";
     else desc = "探索者は全員狂気に飲まれました。";
     
     overlayDesc.textContent = desc;
@@ -755,6 +1043,9 @@ function showGameOver(state) {
 }
 
 function getRequiredParticipants(state) {
-    if (state.round === 1 || state.round === 5) return 4;
-    return 3;
+    let count = (state.round === 1 || state.round === 5) ? 4 : 3;
+    if (state.activeEvents && state.activeEvents.extraParticipant) {
+        count = Math.min(5, count + 1);
+    }
+    return count;
 }

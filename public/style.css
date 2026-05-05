@@ -164,6 +164,62 @@ input[type="text"]:focus {
     display: none;
 }
 
+/* Deck Ratio Setting */
+/* Deck Ratio Setting */
+.deck-ratio-setting {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    text-align: center;
+}
+.setting-label {
+    display: block;
+    font-size: 1rem;
+    font-weight: bold;
+    color: var(--text-light);
+    margin-bottom: 1rem;
+}
+.ratio-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+.ratio-btn {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
+    font-weight: bold;
+    background: rgba(255,255,255,0.05);
+    border: 2px solid var(--panel-border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+}
+.ratio-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-light);
+    transform: translateY(-2px);
+}
+.ratio-btn.active {
+    background: linear-gradient(135deg, rgba(200, 40, 60, 0.2), rgba(150, 20, 40, 0.4));
+    border-color: var(--primary-color);
+    color: white;
+    box-shadow: 0 0 15px rgba(200, 40, 60, 0.4);
+    transform: translateY(-2px);
+}
+.ratio-desc {
+    font-size: 0.75rem;
+    font-weight: normal;
+    opacity: 0.8;
+}
+
 .error-msg {
     color: #ff4040;
     margin-top: 1rem;
@@ -199,12 +255,37 @@ input[type="text"]:focus {
 .ritual-status {
     display: flex;
     gap: 1.5rem;
+    align-items: center;
     font-size: 1.2rem;
     font-weight: bold;
 }
 
 .status-item.success { color: var(--success-color); }
 .status-item.fail { color: var(--fail-color); }
+.status-item.discard {
+    color: var(--text-muted);
+    position: relative;
+    cursor: pointer;
+}
+.discard-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: rgba(20, 10, 35, 0.95);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+}
+.discard-tooltip div:first-child { color: var(--success-color); }
+.discard-tooltip div:last-child { color: var(--fail-color); }
+.status-item.discard:hover .discard-tooltip {
+    display: block;
+}
 
 /* Main Layout */
 .game-layout {
@@ -550,6 +631,9 @@ input[type="text"]:focus {
     align-items: center;
     z-index: 3000;
 }
+.game-over-anim.hidden {
+    display: none !important;
+}
 .game-over-anim-text {
     font-size: 5rem;
     font-weight: bold;
@@ -603,6 +687,15 @@ input[type="text"]:focus {
 }
 .mini-card.success { background: var(--success-color); }
 .mini-card.fail { background: var(--fail-color); }
+.mini-card.card-back {
+    background: linear-gradient(135deg, #2a1a3a, #1a0a2a);
+    border: 1px solid #5a3a7a;
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.05) 4px, rgba(255,255,255,0.05) 8px);
+}
+.mini-card.hidden {
+    background: #333;
+    border-color: #555;
+}
 
 /* Main Action Area */
 .main-action-area {
@@ -810,4 +903,113 @@ input[type="text"]:focus {
 @keyframes scaleIn {
     from { opacity: 0; transform: scale(0.8); }
     to { opacity: 1; transform: scale(1); }
+}
+
+/* Result Announce Animation */
+.result-announce-container {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 400;
+}
+.result-announce-container.hidden {
+    display: none;
+}
+.announce-content {
+    font-size: 5rem;
+    font-weight: bold;
+    text-shadow: 0 0 20px rgba(0,0,0,0.8);
+    opacity: 0;
+    transform: scale(0.8);
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+.announce-content.success {
+    color: var(--success-color);
+    text-shadow: 0 0 30px rgba(74, 189, 172, 0.6);
+}
+.announce-content.fail {
+    color: var(--fail-color);
+    text-shadow: 0 0 30px rgba(252, 74, 26, 0.6);
+}
+.announce-subtext {
+    margin-top: 2rem;
+    font-size: 1.5rem;
+    color: #ddd;
+    opacity: 0;
+    animation: fadeIn 0.5s ease 1s forwards;
+}
+
+@keyframes popIn {
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Audio Controls (Header Integrated) */
+.audio-controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 15px;
+    background: rgba(15, 5, 25, 0.5);
+    border-radius: 8px;
+    padding: 5px 15px;
+    border: 1px solid var(--panel-border);
+}
+
+.status-separator {
+    width: 2px;
+    height: 30px;
+    background: var(--panel-border);
+    margin: 0 10px;
+}
+
+.audio-header {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    margin-right: 10px;
+}
+
+.volume-slider-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.volume-slider-group label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    width: 30px;
+}
+
+.volume-slider-group input[type="range"] {
+    flex: 1;
+    height: 4px;
+    background: var(--panel-border);
+    border-radius: 2px;
+    appearance: none;
+    outline: none;
+}
+
+.volume-slider-group input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    cursor: pointer;
+    box-shadow: 0 0 5px var(--primary-color);
+}
+
+.vol-value {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    width: 32px;
+    text-align: right;
+    font-family: monospace;
 }

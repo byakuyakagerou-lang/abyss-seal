@@ -17,11 +17,11 @@ const MAX_PLAYERS = 5;
 const ROLES = ['Explorer', 'Explorer', 'Explorer', 'Explorer', 'Cultist'];
 
 const EVENT_CARDS = [
-    { id: 'deep_exposure', name: '深淵の暴露', desc: '祭祀長が2名を指名。指名された者は、次ターンの終了まで手札が全員に公開される。' },
-    { id: 'depleted_offerings', name: '枯渇する供物', desc: '全員の持ち手からランダムに1枚を強制破棄。次ターンの開始時のみ手札1枚で挑む。' },
-    { id: 'bloody_price', name: '血塗られた代償', desc: '祭祀長が1名を「生贄」に指名。選ばれた者は即座にSAN値が2減少する。' },
-    { id: 'invitation_to_madness', name: '狂気への誘い', desc: '最もSAN値が高い者全員が対象。「SAN値-1」か「成功カード1枚公開破棄」を選ぶ。（※システム側で強制SAN-1として処理）' },
-    { id: 'blind_fanaticism', name: '盲目の狂信', desc: '次ターンの儀式参加者は、手札を見ずにランダム提出（自動処理）となる。' }
+    { id: 'omen_of_ruin', name: '破滅の予兆', desc: '祭祀長が1名を指名。祭祀長と指名された者のSAN値が1減少する。' },
+    { id: 'offering_to_abyss', name: '深淵への供物', desc: '全員の手札を山札に戻しシャッフルし、新たに手札を引き直す。' },
+    { id: 'demand_for_sacrifice', name: '生贄の要求', desc: '次ターンの儀式参加要求人数が1人増える。（最大5人）' },
+    { id: 'infection_of_madness', name: '狂気の感染', desc: '祭祀長が1名を指名。その者の手札を次ターン終了まで全公開状態にし、SAN値を1減らす。' },
+    { id: 'bloodstained_exchange', name: '血塗られた交換', desc: '祭祀長が1名を指名。自分とそのプレイヤーの手札を全て入れ替える。' }
 ];
 
 function createInitialGameState(roomId, roomName) {
@@ -41,15 +41,15 @@ function createInitialGameState(roomId, roomName) {
         logs: [],
         activeEvents: {
             handRevealed: [],
-            nextTurnRandom: false,
-            blindSubmission: false,
-            oneCardHand: false
+            extraParticipant: false
         },
         pendingEventAction: null,
         shuffledResultCards: [],
         currentEvent: null,
         manipulatedPlayerNames: "",
-        pendingChoicePlayers: []
+        pendingChoicePlayers: [],
+        discardPile: [],
+        deckRatio: '1:1'
     };
 }
 
@@ -65,12 +65,11 @@ function resetGame(gameState) {
     gameState.winner = null;
     gameState.activeEvents = {
         handRevealed: [],
-        nextTurnRandom: false,
-        blindSubmission: false,
-        oneCardHand: false
+        extraParticipant: false
     };
     gameState.pendingEventAction = null;
     gameState.shuffledResultCards = [];
+    gameState.discardPile = [];
 
     gameState.players.forEach(p => {
         p.role = null;
@@ -99,25 +98,37 @@ function broadcastState(roomId) {
         if (!socket) return;
         
         const playerState = JSON.parse(JSON.stringify(gameState));
-        if (playerState.phase !== 'game_over') {
+        const isGameEnd = playerState.phase === 'game_over' || playerState.phase === 'game_over_animation';
+        if (!isGameEnd) {
             playerState.players.forEach(p => {
                 if (p.id !== socket.id) {
-                    if (p.phase !== 'game_over') p.role = '???';
+                    p.role = '???';
                     if (!playerState.activeEvents.handRevealed.includes(p.id)) {
                         p.hand = p.hand.map(() => 'hidden');
                     }
                 }
             });
+        }
+        if (Array.isArray(playerState.deck)) {
             playerState.deck = playerState.deck.length;
         }
+        // 捨て札情報を追加
+        playerState.discardCount = gameState.discardPile.length;
+        playerState.discardSuccessCount = gameState.discardPile.filter(c => c === 'success').length;
+        playerState.discardFailCount = gameState.discardPile.filter(c => c === 'fail').length;
         socket.emit('game_state', playerState);
     });
 }
 
-function createDeck() {
+function createDeck(ratio) {
     let deck = [];
-    for(let i=0; i<15; i++) deck.push('success');
-    for(let i=0; i<15; i++) deck.push('fail');
+    let successCount = 15, failCount = 15;
+    if (ratio === '3:2') {
+        successCount = 18;
+        failCount = 12;
+    }
+    for(let i=0; i<successCount; i++) deck.push('success');
+    for(let i=0; i<failCount; i++) deck.push('fail');
     return deck.sort(() => Math.random() - 0.5);
 }
 
@@ -126,9 +137,12 @@ function drawCards(gameState, count) {
     return gameState.deck.splice(0, count);
 }
 
-function getRequiredParticipants(round) {
-    if (round === 1 || round === 5) return 4;
-    return 3;
+function getRequiredParticipants(gameState) {
+    let count = (gameState.round === 1 || gameState.round === 5) ? 4 : 3;
+    if (gameState.activeEvents && gameState.activeEvents.extraParticipant) {
+        count = Math.min(5, count + 1);
+    }
+    return count;
 }
 
 function checkGameOver(gameState) {
@@ -163,6 +177,16 @@ function checkGameOver(gameState) {
     return false;
 }
 
+// 手札補充（提出後・イベント処理前に呼ぶ）
+function replenishHands(gameState) {
+    gameState.players.forEach(p => {
+        const targetHandSize = 2;
+        while (p.hand.length < targetHandSize && gameState.deck.length > 0) {
+            p.hand.push(...drawCards(gameState, 1));
+        }
+    });
+}
+
 function nextTurn(gameState) {
     if (checkGameOver(gameState)) {
         broadcastState(gameState.id);
@@ -175,8 +199,6 @@ function nextTurn(gameState) {
         return;
     }
 
-    gameState.activeEvents.handRevealed = [];
-    
     const currentIndex = gameState.players.findIndex(p => p.id === gameState.leaderId);
     let nextIndex = (currentIndex + 1) % gameState.players.length;
     gameState.leaderId = gameState.players[nextIndex].id;
@@ -188,21 +210,7 @@ function nextTurn(gameState) {
     
     addLog(gameState, `ラウンド ${gameState.round} が開始されました。現在の祭祀長は ${gameState.players[nextIndex].name} です。`);
     
-    gameState.players.forEach(p => {
-        const targetHandSize = gameState.activeEvents.oneCardHand ? 1 : 2;
-        while (p.hand.length < targetHandSize && gameState.deck.length > 0) {
-            p.hand.push(...drawCards(gameState, 1));
-        }
-    });
-    gameState.activeEvents.oneCardHand = false;
-
-    if (gameState.activeEvents.nextTurnRandom) {
-        gameState.activeEvents.blindSubmission = true;
-        gameState.activeEvents.nextTurnRandom = false;
-    } else {
-        gameState.activeEvents.blindSubmission = false;
-    }
-
+    replenishHands(gameState);
     broadcastState(gameState.id);
     triggerBotActions(gameState);
 }
@@ -211,71 +219,80 @@ function applyEvent(gameState, event) {
     addLog(gameState, `【神話イベント発動】: ${event.name} - ${event.desc}`);
     
     switch(event.id) {
-        case 'deep_exposure':
-            gameState.phase = 'event_action';
-            gameState.pendingEventAction = { type: 'select_players', count: 2, eventId: event.id };
-            addLog(gameState, "祭祀長は手札を公開する2名を選んでください。");
-            triggerBotActions(gameState);
-            break;
-        case 'depleted_offerings':
-            gameState.players.forEach(p => {
-                if(p.hand.length > 0) {
-                    const idx = Math.floor(Math.random() * p.hand.length);
-                    p.hand.splice(idx, 1);
-                }
-            });
-            gameState.activeEvents.oneCardHand = true;
-            addLog(gameState, "全員の手札がランダムに1枚破棄されました。次ターンは手札1枚で挑みます。");
-            endRound(gameState);
-            break;
-        case 'bloody_price':
+        case 'omen_of_ruin':
             gameState.phase = 'event_action';
             gameState.pendingEventAction = { type: 'select_players', count: 1, eventId: event.id };
-            addLog(gameState, "祭祀長は生贄となる1名を選んでください。");
+            addLog(gameState, "祭祀長は破滅を共にする1名を指名してください。");
             triggerBotActions(gameState);
             break;
-        case 'invitation_to_madness':
-            let maxSan = -1;
-            gameState.players.forEach(p => { if(p.san > maxSan) maxSan = p.san; });
-            const targets = gameState.players.filter(p => p.san === maxSan);
-            
-            gameState.pendingChoicePlayers = targets.map(p => p.id);
-            gameState.phase = 'event_choice';
-            gameState.pendingEventAction = { type: 'madness_choice', eventId: event.id };
-            
-            addLog(gameState, `「狂気への誘い」の対象: ${targets.map(p => p.name).join(', ')}`);
-            addLog(gameState, `対象者は「SAN値-1」か「成功カードの破棄」を選択してください。`);
-            
-            // NPCの自動処理
-            targets.forEach(p => {
-                if (p.isBot) {
-                    handleMadnessChoice(gameState, p.id, 'san');
+        case 'offering_to_abyss':
+            gameState.players.forEach(p => {
+                if(p.hand.length > 0) {
+                    gameState.deck.push(...p.hand);
+                    p.hand = [];
                 }
             });
-            break;
-        case 'blind_fanaticism':
-            gameState.activeEvents.nextTurnRandom = true;
-            addLog(gameState, "次ターンの儀式参加者は、手札が自動的にランダム提出されます。");
+            gameState.deck.sort(() => Math.random() - 0.5);
+            replenishHands(gameState);
+            addLog(gameState, "全員の手札が山札に戻され、引き直されました。");
             endRound(gameState);
+            break;
+        case 'demand_for_sacrifice':
+            gameState.activeEvents.extraParticipant = true;
+            addLog(gameState, "次ターンの儀式参加要求人数が1人増えます。");
+            endRound(gameState);
+            break;
+        case 'infection_of_madness':
+            gameState.phase = 'event_action';
+            gameState.pendingEventAction = { type: 'select_players', count: 1, eventId: event.id };
+            addLog(gameState, "祭祀長は狂気を感染させる1名を指名してください。");
+            triggerBotActions(gameState);
+            break;
+        case 'bloodstained_exchange':
+            gameState.phase = 'event_action';
+            gameState.pendingEventAction = { type: 'select_players', count: 1, eventId: event.id };
+            addLog(gameState, "祭祀長は手札を交換する1名を指名してください。");
+            triggerBotActions(gameState);
             break;
     }
     broadcastState(gameState.id);
 }
 
 function processResults(gameState) {
+    // 儀式が終わったら参加人数追加効果と手札公開効果をリセット
+    gameState.activeEvents.extraParticipant = false;
+    gameState.activeEvents.handRevealed = [];
+    
     const hasFail = gameState.shuffledResultCards.some(c => c === 'fail');
     
     let resultMsg = "提出されたカード: ";
     resultMsg += gameState.shuffledResultCards.map(c => c === 'success' ? '成功' : '失敗').join(', ');
     addLog(gameState, resultMsg);
 
+    // 結果公開後に捨て札に追加（提出時に追加すると内訳で何を出したかバレるため）
+    gameState.shuffledResultCards.forEach(c => gameState.discardPile.push(c));
+
     if (!hasFail) {
         gameState.successCount++;
-        addLog(gameState, `【儀式成功】祭壇の封印に成功しました！（成功: ${gameState.successCount}回）`);
-        
-        if (gameState.successCount >= 3) {
-            endRound(gameState);
-        } else {
+        addLog(gameState, `【儀式の阻止 成功】祭壇の封印に成功しました！（成功: ${gameState.successCount}回）`);
+    } else {
+        gameState.failCount++;
+        addLog(gameState, `【儀式の阻止 失敗】失敗カードが含まれていました。（失敗: ${gameState.failCount}回）`);
+    }
+
+    // 結果アナウンスフェーズ（3秒間表示）
+    gameState.phase = 'result_announce';
+    gameState.resultAnnounce = {
+        success: !hasFail,
+        successCount: gameState.successCount,
+        failCount: gameState.failCount
+    };
+    broadcastState(gameState.id);
+
+    setTimeout(() => {
+        if (!rooms.has(gameState.id) || gameState.phase !== 'result_announce') return;
+
+        if (!hasFail && gameState.successCount < 3) {
             // 神話イベントのアニメーションフェーズへ移行
             const event = EVENT_CARDS[Math.floor(Math.random() * EVENT_CARDS.length)];
             gameState.phase = 'event_animation';
@@ -286,13 +303,11 @@ function processResults(gameState) {
                 if (rooms.has(gameState.id) && gameState.phase === 'event_animation') {
                     applyEvent(gameState, event);
                 }
-            }, 10000); // 10秒間に延長しテキストを読めるようにする
+            }, 10000);
+        } else {
+            endRound(gameState);
         }
-    } else {
-        gameState.failCount++;
-        addLog(gameState, `【儀式失敗】失敗カードが含まれていました。（失敗: ${gameState.failCount}回）`);
-        endRound(gameState);
-    }
+    }, 3000);
 }
 
 function endRound(gameState) {
@@ -327,7 +342,8 @@ function handleMadnessChoice(gameState, playerId, choice) {
     } else {
         const successIdx = player.hand.indexOf('success');
         if (successIdx > -1) {
-            player.hand.splice(successIdx, 1);
+            const removed = player.hand.splice(successIdx, 1)[0];
+            gameState.discardPile.push(removed);
             addLog(gameState, `${player.name} は手札の成功カード1枚を破棄しました。`);
         } else {
             player.san = Math.max(0, player.san - 1);
@@ -350,7 +366,7 @@ function triggerBotActions(gameState) {
         if (gameState.phase === 'leader_selection') {
             const leader = gameState.players.find(p => p.id === gameState.leaderId);
             if (leader && (leader.isBot || leader.san <= 0)) {
-                const reqCount = getRequiredParticipants(gameState.round);
+                const reqCount = getRequiredParticipants(gameState);
                 let pool = gameState.players.map(p => p.id).filter(id => id !== leader.id).sort(() => Math.random() - 0.5);
                 let selected = [leader.id, ...pool.slice(0, reqCount - 1)];
                 handleSelectParticipants(gameState, leader.id, selected);
@@ -360,7 +376,7 @@ function triggerBotActions(gameState) {
             gameState.players.forEach(p => {
                 if (p.isBot && gameState.participants.includes(p.id)) {
                     const hasSubmitted = gameState.submittedCards.find(s => s.playerId === p.id);
-                    if (!hasSubmitted && p.san > 0 && !gameState.activeEvents.blindSubmission) {
+                    if (!hasSubmitted && p.san > 0) {
                         let cardIdx = Math.floor(Math.random() * p.hand.length);
                         
                         if (p.role === 'Explorer') {
@@ -399,7 +415,7 @@ function checkGameStart(gameState) {
     if (gameState.phase !== 'lobby') return;
     if (gameState.players.length === MAX_PLAYERS && gameState.players.every(p => p.isReady)) {
         const roles = [...ROLES].sort(() => Math.random() - 0.5);
-        gameState.deck = createDeck();
+        gameState.deck = createDeck(gameState.deckRatio);
         
         gameState.players.forEach((p, i) => {
             p.role = roles[i];
@@ -419,7 +435,7 @@ function checkGameStart(gameState) {
 
 function handleSelectParticipants(gameState, playerId, selectedIds) {
     if (gameState.phase !== 'leader_selection' || playerId !== gameState.leaderId) return;
-    const reqCount = getRequiredParticipants(gameState.round);
+    const reqCount = getRequiredParticipants(gameState);
     if (selectedIds.length !== reqCount) return;
 
     if (!selectedIds.includes(playerId)) return;
@@ -431,7 +447,7 @@ function handleSelectParticipants(gameState, playerId, selectedIds) {
     
     // 自動提出が必要なプレイヤーを特定
     const manipulatedPlayers = gameState.players.filter(p => 
-        selectedIds.includes(p.id) && (p.san <= 0 || gameState.activeEvents.blindSubmission)
+        selectedIds.includes(p.id) && p.san <= 0
     );
 
     if (manipulatedPlayers.length > 0) {
@@ -447,6 +463,11 @@ function handleSelectParticipants(gameState, playerId, selectedIds) {
                 const cardIdx = Math.floor(Math.random() * p.hand.length);
                 const card = p.hand.splice(cardIdx, 1)[0];
                 gameState.submittedCards.push({ playerId: p.id, card });
+                // 提出後すぐに手札を補充
+                const targetHandSize = 2;
+                while (p.hand.length < targetHandSize && gameState.deck.length > 0) {
+                    p.hand.push(...drawCards(gameState, 1));
+                }
                 addLog(gameState, `${p.name} のカードが深淵の意思によって自動提出されました。`);
             });
             
@@ -491,6 +512,11 @@ function handleRerollSan(gameState, playerId, cardIndex) {
             const finalCardIdx = Math.floor(Math.random() * player.hand.length);
             const card = player.hand.splice(finalCardIdx, 1)[0];
             gameState.submittedCards.push({ playerId: player.id, card });
+            // 提出後すぐに手札を補充
+            const targetHandSize = 2;
+            while (player.hand.length < targetHandSize && gameState.deck.length > 0) {
+                player.hand.push(...drawCards(gameState, 1));
+            }
             addLog(gameState, `${player.name} は発狂し、深淵の意思によってカードが自動提出されました。`);
             
             checkCardSubmissionComplete(gameState);
@@ -516,6 +542,7 @@ function checkCardSubmissionComplete(gameState) {
             return 0;
         });
         gameState.shuffledResultCards = resultCards;
+
         addLog(gameState, "全員の提出が完了しました。儀式の結果を確認します...");
         
         // Wait for animation (1.5s per card + 3s pause)
@@ -533,12 +560,18 @@ function handleSubmitCard(gameState, playerId, cardIndex) {
     if (gameState.phase !== 'card_submission') return;
     if (!gameState.participants.includes(playerId)) return;
     if (gameState.submittedCards.find(s => s.playerId === playerId)) return;
-    if (player.san <= 0 || gameState.activeEvents.blindSubmission) return;
+    if (player.san <= 0) return;
 
     if (cardIndex < 0 || cardIndex >= player.hand.length) return;
 
     const card = player.hand.splice(cardIndex, 1)[0];
     gameState.submittedCards.push({ playerId, card });
+
+    // 提出後すぐに手札を補充
+    const targetHandSize = 2;
+    while (player.hand.length < targetHandSize && gameState.deck.length > 0) {
+        player.hand.push(...drawCards(gameState, 1));
+    }
 
     addLog(gameState, `${player.name} がカードを提出しました。`);
     
@@ -555,14 +588,28 @@ function handleEventAction(gameState, playerId, selectedIds) {
     const action = gameState.pendingEventAction;
     if (selectedIds.length !== action.count) return;
 
-    if (action.eventId === 'deep_exposure') {
-        gameState.activeEvents.handRevealed = selectedIds;
-        const names = gameState.players.filter(p => selectedIds.includes(p.id)).map(p => p.name).join(', ');
-        addLog(gameState, `${names} の手札が公開されました。`);
-    } else if (action.eventId === 'bloody_price') {
+    const leader = gameState.players.find(p => p.id === playerId);
+
+    if (action.eventId === 'omen_of_ruin') {
         const target = gameState.players.find(p => p.id === selectedIds[0]);
-        target.san = Math.max(0, target.san - 2);
-        addLog(gameState, `${target.name} が生贄に選ばれ、SAN値が2減少しました。`);
+        if (leader) leader.san = Math.max(0, leader.san - 1);
+        if (target) target.san = Math.max(0, target.san - 1);
+        addLog(gameState, `${leader ? leader.name : '祭祀長'} と ${target ? target.name : '指名された者'} のSAN値が1減少しました。`);
+    } else if (action.eventId === 'infection_of_madness') {
+        const target = gameState.players.find(p => p.id === selectedIds[0]);
+        if (target) {
+            gameState.activeEvents.handRevealed.push(target.id);
+            target.san = Math.max(0, target.san - 1);
+            addLog(gameState, `${target.name} の手札が公開状態になり、SAN値が1減少しました。`);
+        }
+    } else if (action.eventId === 'bloodstained_exchange') {
+        const target = gameState.players.find(p => p.id === selectedIds[0]);
+        if (leader && target) {
+            const tempHand = [...leader.hand];
+            leader.hand = [...target.hand];
+            target.hand = tempHand;
+            addLog(gameState, `${leader.name} と ${target.name} が手札を全て入れ替えました。`);
+        }
     }
 
     endRound(gameState);
@@ -682,6 +729,17 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('set_deck_ratio', (ratio) => {
+        const roomId = playerSocketMap.get(socket.id);
+        if (!roomId) return;
+        const gameState = rooms.get(roomId);
+        if (!gameState) return;
+        if (gameState.phase !== 'lobby') return;
+        if (ratio !== '1:1' && ratio !== '3:2') return;
+        gameState.deckRatio = ratio;
+        broadcastState(gameState.id);
+    });
+
     socket.on('add_bot', () => {
         const roomId = playerSocketMap.get(socket.id);
         if (!roomId) return;
@@ -746,7 +804,7 @@ io.on('connection', (socket) => {
         const gameState = rooms.get(roomId);
         if (!gameState) return;
 
-        const reqCount = getRequiredParticipants(gameState.round);
+        const reqCount = getRequiredParticipants(gameState);
         if (selectedIds.length !== reqCount) {
              socket.emit('error_msg', `${reqCount}名選んでください。`);
              return;
