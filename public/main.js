@@ -711,7 +711,14 @@ function updateOtherPlayers(state) {
             handDiv.className = 'other-hand';
             p.hand.forEach(cardVal => {
                 const mini = document.createElement('div');
-                if (cardVal === 'hidden') {
+                let isHidden = false;
+                if (isMe && !state.activeEvents.handRevealed.includes(myId)) {
+                    isHidden = true;
+                } else if (cardVal === 'hidden') {
+                    isHidden = true;
+                }
+
+                if (isHidden) {
                     mini.className = 'mini-card card-back';
                 } else {
                     mini.className = `mini-card ${cardVal}`;
