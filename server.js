@@ -19,7 +19,7 @@ const ROLES = ['Explorer', 'Explorer', 'Explorer', 'Explorer', 'Cultist'];
 const EVENT_CARDS = [
     { id: 'omen_of_ruin', name: '破滅の予兆', desc: '祭祀長が1名を指名。祭祀長と指名された者のSAN値が1減少する。' },
     { id: 'offering_to_abyss', name: '深淵への供物', desc: '全員の手札を山札に戻しシャッフルし、新たに手札を引き直す。' },
-    { id: 'demand_for_sacrifice', name: '生贄の要求', desc: '次ターンの儀式参加要求人数が1人増える。（最大5人）' },
+    { id: 'demand_for_sacrifice', name: '生贄の要求', desc: '次ターンの儀式参加要求人数が1人増える。（最大5人。4ラウンド目以降は発生しない）' },
     { id: 'infection_of_madness', name: '狂気の感染', desc: '祭祀長が1名を指名。その者の手札を次ターン終了まで全公開状態にし、SAN値を1減らす。' },
     { id: 'bloodstained_exchange', name: '血塗られた交換', desc: '祭祀長が1名を指名。自分とそのプレイヤーの手札を全て入れ替える。' }
 ];
@@ -294,7 +294,11 @@ function processResults(gameState) {
 
         if (!hasFail && gameState.successCount < 3) {
             // 神話イベントのアニメーションフェーズへ移行
-            const event = EVENT_CARDS[Math.floor(Math.random() * EVENT_CARDS.length)];
+            let availableEvents = EVENT_CARDS;
+            if (gameState.round >= 4) {
+                availableEvents = EVENT_CARDS.filter(e => e.id !== 'demand_for_sacrifice');
+            }
+            const event = availableEvents[Math.floor(Math.random() * availableEvents.length)];
             gameState.phase = 'event_animation';
             gameState.currentEvent = event;
             broadcastState(gameState.id);
