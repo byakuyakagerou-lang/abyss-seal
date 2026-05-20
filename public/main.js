@@ -1,4 +1,10 @@
-const socket = io();
+// バックエンドサーバーURL（Railwayにデプロイ後のURLに変更してください）
+const BACKEND_URL = 'https://abyss-seal-production.up.railway.app';
+const socket = io(BACKEND_URL, {
+    transports: ['websocket', 'polling'],
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000
+});
 
 // DOM Elements
 const loginScreen = document.getElementById('login-screen');
@@ -58,14 +64,37 @@ const seVolText = document.getElementById('se-vol-text');
 let seVolume = parseInt(seVolumeSlider.value) / 100;
 bgmPlayer.volume = parseInt(bgmVolumeSlider.value) / 100;
 
-bgmVolumeSlider.addEventListener('input', (e) => {
-    bgmPlayer.volume = parseInt(e.target.value) / 100;
-    bgmVolText.textContent = e.target.value + '%';
-});
-seVolumeSlider.addEventListener('input', (e) => {
-    seVolume = parseInt(e.target.value) / 100;
-    seVolText.textContent = e.target.value + '%';
-});
+function updateBgmVolume(val) {
+    const v = parseInt(val);
+    bgmPlayer.volume = v / 100;
+    bgmVolText.textContent = v + '%';
+    bgmVolumeSlider.value = v;
+    
+    const lobbyBgmSlider = document.getElementById('lobby-bgm-volume');
+    const lobbyBgmText = document.getElementById('lobby-bgm-vol-text');
+    if (lobbyBgmSlider) lobbyBgmSlider.value = v;
+    if (lobbyBgmText) lobbyBgmText.textContent = v + '%';
+}
+
+function updateSeVolume(val) {
+    const v = parseInt(val);
+    seVolume = v / 100;
+    seVolText.textContent = v + '%';
+    seVolumeSlider.value = v;
+    
+    const lobbySeSlider = document.getElementById('lobby-se-volume');
+    const lobbySeText = document.getElementById('lobby-se-vol-text');
+    if (lobbySeSlider) lobbySeSlider.value = v;
+    if (lobbySeText) lobbySeText.textContent = v + '%';
+}
+
+bgmVolumeSlider.addEventListener('input', (e) => updateBgmVolume(e.target.value));
+seVolumeSlider.addEventListener('input', (e) => updateSeVolume(e.target.value));
+
+const lobbyBgmSlider = document.getElementById('lobby-bgm-volume');
+const lobbySeSlider = document.getElementById('lobby-se-volume');
+if (lobbyBgmSlider) lobbyBgmSlider.addEventListener('input', (e) => updateBgmVolume(e.target.value));
+if (lobbySeSlider) lobbySeSlider.addEventListener('input', (e) => updateSeVolume(e.target.value));
 
 let noiseBuffer = null;
 function initAudio() {
@@ -366,6 +395,12 @@ madnessDiscardBtn.addEventListener('click', () => {
 // --- Socket Events ---
 socket.on('connect', () => {
     myId = socket.id;
+    if (currentGameState && currentGameState.id) {
+        const name = playerNameInput.value.trim();
+        if (name) {
+            socket.emit('join_room', currentGameState.id, name);
+        }
+    }
 });
 
 socket.on('error_msg', (msg) => {

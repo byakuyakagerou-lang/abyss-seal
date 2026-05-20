@@ -74,6 +74,20 @@
                     <button id="toggle-ready-btn" class="btn primary-btn">準備完了にする</button>
                     <button id="room-add-bot-btn" class="btn">CPUを追加</button>
                 </div>
+                
+                <div id="lobby-audio-controls" class="audio-controls" style="margin-top: 2rem; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px;">
+                    <div class="audio-header" style="text-align: center; margin-bottom: 10px;">♪ サウンド設定</div>
+                    <div class="volume-slider-group">
+                        <label for="lobby-bgm-volume">BGM</label>
+                        <input type="range" id="lobby-bgm-volume" min="0" max="100" value="30">
+                        <span id="lobby-bgm-vol-text" class="vol-value">30%</span>
+                    </div>
+                    <div class="volume-slider-group">
+                        <label for="lobby-se-volume">SE</label>
+                        <input type="range" id="lobby-se-volume" min="0" max="100" value="50">
+                        <span id="lobby-se-vol-text" class="vol-value">50%</span>
+                    </div>
+                </div>
             </div>
             <!-- 背景エフェクト用 -->
             <div class="particles"></div>
@@ -195,7 +209,7 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="main.js"></script>
 </body>
 </html>
